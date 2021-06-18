@@ -434,7 +434,7 @@ template <typename T>
 SOA_HOST_ONLY
 void dump() {
   using SoA = T;
-  std::cout << "SoATemplate<" << SoA::size() << ", " << SoA::alignment() << "): " << '\n';
+  std::cout << "SoATemplate<" << SoA::size() << ", " << SoA::alignment() << ">: " << '\n';
   std::cout << "  sizeof(...): " << sizeof(SoA) << '\n';
   std::cout << "  alignof(...): " << alignof(SoA) << '\n';
   std::cout << "  x[" << SoA::size() << "] at " << offsetof(SoA, x) << " has size " << sizeof(SoA::x) << '\n';

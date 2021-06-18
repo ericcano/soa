@@ -183,7 +183,7 @@ template <typename T>                                                           
 SOA_HOST_ONLY                                                                                                                       \
 void dump() {                                                                                                                       \
   using SoA = T;                                                                                                                    \
-  std::cout << #CLASS "<" << SoA::size << ", " << SoA::alignment << "): " << '\n';                                                  \
+  std::cout << #CLASS "<" << SoA::size << ", " << SoA::alignment << ">: " << '\n';                                                  \
   std::cout << "  sizeof(...): " << sizeof(CLASS) << '\n';                                                                          \
   std::cout << "  alignof(...): " << alignof(CLASS) << '\n';                                                                        \
   _DECLARE_SOA_DUMP_INFOS(__VA_ARGS__)                                                                                              \
