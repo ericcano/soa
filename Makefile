@@ -1,7 +1,7 @@
 SRC=$(wildcard *.cc *.cu)
 OBJ=$(SRC:%=.tmp/%.o)
 DEP=$(SRC:%=.tmp/%.d)
-TEST=test_v0 test_v1 test_v2 test_v3 test_v4
+TEST=test_v0 test_v1 test_v2 test_v3 test_v4 test_v5
 
 CXX=g++-9
 LD=g++-9
