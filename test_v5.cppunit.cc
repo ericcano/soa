@@ -1,6 +1,7 @@
 #include <iostream>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdexcept>
 #include "cppunit/extensions/HelperMacros.h"
 
 /*
@@ -12,12 +13,14 @@
 class testSoA: public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(testSoA);
   CPPUNIT_TEST(initialTest);
+  CPPUNIT_TEST(checkAlignment);
   CPPUNIT_TEST_SUITE_END();
-  
+
 public:
   void setUp() {}
   void tearDown() {}
   void initialTest();
+  void checkAlignment();
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(testSoA);
@@ -47,14 +50,14 @@ declare_SoA_template(SoA,
 
 using LargeSoA = SoA<1024>;
 
-void testSoA::initialTest(void) {
+void testSoA::initialTest() {
   std::cout << std::boolalpha;
 
 
 
   dump<SoA<1>>();
   CPPUNIT_ASSERT_EQUAL_MESSAGE("Size of SoA<1>", 
-      3 * sizeof(double) 
+      3 * sizeof(double)
       + (sizeof(uint16_t) / sizeof(int32_t) + 1) * sizeof(int32_t) // Take into account the padding to align the next element
       + sizeof(int32_t)
       + 2 * sizeof(const char *), 
@@ -86,4 +89,58 @@ void testSoA::initialTest(void) {
   soa[9] = soa[7];
 
   CPPUNIT_ASSERT(& soa.z()[7] == & (soa[7].z));
+}
+
+template <typename SoA_t, typename T>
+void checkValuesAlignment(SoA_t &soa, T SoA_t::element::*member, const std::string & memberName, size_t size, uint32_t bitAlignment) {
+  if (bitAlignment % 8) CPPUNIT_FAIL("bitAlignment not byte aligned.");
+  size_t byteAlignment = bitAlignment / 8;
+  for (size_t i=0; i<size; i++) {
+    // Check that each value is aligned
+    if (reinterpret_cast<std::uintptr_t>(&(soa[i].*member)) % byteAlignment
+            != (i * T::valueSize) %byteAlignment ) {
+      std::stringstream err;
+      err << "Misaligned value: " <<  memberName << " at index=" << i
+              << " address=" << &(soa[i].*member) << " byteAlignment=" << byteAlignment
+              << " address lower part: " << reinterpret_cast<std::uintptr_t>(&(soa[i].*member)) % byteAlignment
+              << " expected address lower part: " << ((i * T::valueSize) % byteAlignment)
+              << " size=" << SoA_t::size << " align=" << SoA_t::alignment;
+      CPPUNIT_FAIL(err.str());
+    }
+    // Check that all values except the first-in rows (address 0 modulo alignment)
+    // are contiguous to their predecessors in memory (this will detect cutting
+    // memory/cache/etc... lines in unexpected places (for blocked SoA like AoSoA)
+    if ((reinterpret_cast<std::uintptr_t>(&(soa[i].*member)) % byteAlignment)
+         && (reinterpret_cast<std::uintptr_t>(&(soa[i - 1].*member)) + T::valueSize
+              != reinterpret_cast<std::uintptr_t>(&(soa[i].*member)))) {
+      std::stringstream err;
+      err << "Unexpected non-contiguity: " <<  memberName << " at index=" << i
+              << " address=" << &(soa[i].*member) << " is not contiguous to "
+              << memberName << " at index=" << i - 1 << "address=" << &(soa[i - 1].*member)
+              << " size=" << SoA_t::size << " align=" << SoA_t::alignment << " valueSize=" << T::valueSize;
+      CPPUNIT_FAIL(err.str());
+    }
+  }
+}
+
+template <typename T>
+void checkSoAAlignment(uint32_t bitAlignment) {
+  T soa;
+  checkValuesAlignment(soa, &T::element::x, "x", T::size, bitAlignment);
+  checkValuesAlignment(soa, &T::element::y, "y", T::size, bitAlignment);
+  checkValuesAlignment(soa, &T::element::z, "z", T::size, bitAlignment);
+  checkValuesAlignment(soa, &T::element::colour, "colour", T::size, bitAlignment);
+  checkValuesAlignment(soa, &T::element::value, "value", T::size, bitAlignment);
+  checkValuesAlignment(soa, &T::element::name, "name", T::size, bitAlignment);
+}
+void testSoA::checkAlignment() {
+  checkSoAAlignment<SoA<1>>(8);
+  checkSoAAlignment<SoA<10>>(8);
+  checkSoAAlignment<SoA<31>>(8);
+  checkSoAAlignment<SoA<32>>(8);
+
+  checkSoAAlignment<SoA<1,64>>(8*64);
+  checkSoAAlignment<SoA<10,64>>(8*64);
+  checkSoAAlignment<SoA<31,64>>(8*64);
+  checkSoAAlignment<SoA<32,64>>(8*64);
 }

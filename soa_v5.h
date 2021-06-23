@@ -30,6 +30,8 @@ public:
   const T* operator& () const { return &col_[idx_]; }
   template <typename T2>
   T& operator= (const T2& v) { col_[idx_] = v; return col_[idx_]; }
+  typedef T valueType;
+  static constexpr auto valueSize = sizeof(T);
 private:
   size_t idx_;
   T (&col_)[sz];
