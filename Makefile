@@ -11,7 +11,7 @@ LDFLAGS=-lrt
 
 .PHONY: all clean distclean dump
 
-all: $(TEST)
+all: $(TEST) test_v5_cppunit
 
 
 clean:
@@ -22,6 +22,9 @@ distclean: clean
 
 $(TEST): %: .tmp/%.cc.o Makefile
 	$(CXX) $(CXXFLAGS) $< $(LDFLAGS) -o $@
+
+test_v5_cppunit: .tmp/test_v5.cppunit.cc.o .tmp/test_v5.cppunitrunner.cc.o
+	$(CXX) $(CXXFLAGS) $+ $(LDFLAGS) -o $@
 
 .tmp/%.cc.o: %.cc Makefile
 	@mkdir -p .tmp
