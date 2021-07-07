@@ -20,7 +20,8 @@ CXXFLAGS=-std=c++17 -O3 -g -Wall -Wno-attributes -pedantic -fPIC -MMD -march=nat
 # is a temporary files that should not be added to dependencies.
 NVCC_CXXFLAGS=--compiler-options '$(filter-out -pedantic -MMD, $(CXXFLAGS))'
 
-NVCCFLAGS=-std=c++17 -O3 -g --compiler-bindir $(CXX)
+NVCCARCH= -gencode arch=compute_60,code=[sm_60,compute_60] -gencode arch=compute_70,code=[sm_70,compute_70] -gencode arch=compute_75,code=[sm_75,compute_75]
+NVCCFLAGS=-std=c++17 -O3 -g --compiler-bindir $(CXX) $(NVCCARCH)
 LDFLAGS=-lrt -lcppunit -lcuda
 
 .PHONY: all clean distclean dump

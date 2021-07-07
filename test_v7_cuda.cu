@@ -126,7 +126,9 @@ void testSoA::fill() {
   CUDA_UNIT_CHECK(cudaGetDeviceCount(&deviceCount));
   CPPUNIT_ASSERT(deviceCount > 0);
   CUDA_UNIT_CHECK(cudaGetDeviceProperties(&deviceProperties, defaultDevice));
+  CUDA_UNIT_CHECK(cudaSetDevice(defaultDevice));  
   cudaStream_t stream;
+  auto e = cudaStreamCreate(&stream);
   CUDA_UNIT_CHECK(cudaStreamCreate(&stream));
   
   // Allocate memory and populate SoA descriptors
