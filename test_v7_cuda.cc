@@ -1,29 +1,19 @@
-#include <iostream>
+
+
+#include "soa_v7_cuda.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdexcept>
-#include <cppunit/extensions/HelperMacros.h>
+#include <iostream>
 #include <cuda.h>
-
+#include <functional>
 /*
  * Unit tests skeleton based on DataFormats/Common/test/ (testDataFormatsCommon)
  */
 
+#include "soa_v7_cuda.h"
 #include "soa_v7.h"
-
-class testSoA: public CppUnit::TestFixture {
-  CPPUNIT_TEST_SUITE(testSoA);
-  CPPUNIT_TEST(initialTest);
-  CPPUNIT_TEST(checkAlignment);
-  CPPUNIT_TEST_SUITE_END();
-
-public:
-  void setUp() {}
-  void tearDown() {}
-  void initialTest();
-  void checkAlignment();
-};
-
 
 CPPUNIT_TEST_SUITE_REGISTRATION(testSoA);
 
@@ -32,23 +22,6 @@ CPPUNIT_TEST_SUITE_REGISTRATION(testSoA);
   do { std::cout << #X " is " << (X) << std::endl; } while(false)
 
 // declare a statically-sized SoA, templated on the column size and (optional) alignment
-
-declare_SoA_template(SoA,
-  // predefined static scalars
-  // size_t size;
-  // size_t alignment;
-
-  // columns: one value per element
-  SoA_column(double, x),
-  SoA_column(double, y),
-  SoA_column(double, z),
-  SoA_column(uint16_t, colour),
-  SoA_column(int32_t, value),
-  SoA_column(const char *, name),
-
-  // scalars: one value for the whole structure
-  SoA_scalar(const char *, description)
-);
 
 void testSoA::initialTest() {
   std::cout << std::boolalpha;
@@ -84,62 +57,33 @@ void testSoA::initialTest() {
   soa[7].z = -1.;
   soa[7].colour = 42;
   soa[7].value = 9999;
-  soa[7].name = "element";
 
   soa[9] = soa[7];
 
   CPPUNIT_ASSERT(& soa.z()[7] == & (soa[7].z));
 }
 
-template <typename T>
-void checkValuesAlignment(SoA &soa, T SoA::element::*member, const std::string & memberName, uint32_t bitAlignment) {
-  if (bitAlignment % 8) CPPUNIT_FAIL("bitAlignment not byte aligned.");
-  size_t byteAlignment = bitAlignment / 8;
-  for (size_t i=0; i<soa.nElements(); i++) {
-    // Check that each value is aligned
-    if (reinterpret_cast<std::uintptr_t>(&(soa[i].*member)) % byteAlignment
-            != (i * T::valueSize) %byteAlignment ) {
-      std::stringstream err;
-      err << "Misaligned value: " <<  memberName << " at index=" << i
-              << " address=" << &(soa[i].*member) << " byteAlignment=" << byteAlignment
-              << " address lower part: " << reinterpret_cast<std::uintptr_t>(&(soa[i].*member)) % byteAlignment
-              << " expected address lower part: " << ((i * T::valueSize) % byteAlignment)
-              << " size=" << soa.nElements() << " align=" << soa.byteAlignment();
-      CPPUNIT_FAIL(err.str());
-    }
-    // Check that all values except the first-in rows (address 0 modulo alignment)
-    // are contiguous to their predecessors in memory (this will detect cutting
-    // memory/cache/etc... lines in unexpected places (for blocked SoA like AoSoA)
-    if ((reinterpret_cast<std::uintptr_t>(&(soa[i].*member)) % byteAlignment)
-         && (reinterpret_cast<std::uintptr_t>(&(soa[i - 1].*member)) + T::valueSize
-              != reinterpret_cast<std::uintptr_t>(&(soa[i].*member)))) {
-      std::stringstream err;
-      err << "Unexpected non-contiguity: " <<  memberName << " at index=" << i
-              << " address=" << &(soa[i].*member) << " is not contiguous to "
-              << memberName << " at index=" << i - 1 << "address=" << &(soa[i - 1].*member)
-              << " size=" << soa.nElements() << " align=" << soa.byteAlignment() << " valueSize=" << T::valueSize;
-      CPPUNIT_FAIL(err.str());
-    }
-  }
+
+
+void testSoA::checkSoAAlignment(size_t nElements, size_t byteAlignment) {
+  auto soaBlock = make_aligned_unique(SoA::computeDataSize(nElements,byteAlignment), byteAlignment);
+  SoA soa(soaBlock.get(), nElements, byteAlignment);
+  checkValuesAlignment(soa, &SoA::element::x, "x", byteAlignment);
+  checkValuesAlignment(soa, &SoA::element::y, "y", byteAlignment);
+  checkValuesAlignment(soa, &SoA::element::z, "z", byteAlignment);
+  checkValuesAlignment(soa, &SoA::element::colour, "colour", byteAlignment);
+  checkValuesAlignment(soa, &SoA::element::value, "value", byteAlignment);
+  checkValuesAlignment(soa, &SoA::element::py, "py", byteAlignment);
 }
 
-void checkSoAAlignment(size_t nElements, size_t byteAlignment, uint32_t bitAlignment) {
-  SoA soa(new std::byte[SoA::computeDataSize(nElements,byteAlignment)], nElements, byteAlignment);
-  checkValuesAlignment(soa, &SoA::element::x, "x", bitAlignment);
-  checkValuesAlignment(soa, &SoA::element::y, "y", bitAlignment);
-  checkValuesAlignment(soa, &SoA::element::z, "z", bitAlignment);
-  checkValuesAlignment(soa, &SoA::element::colour, "colour", bitAlignment);
-  checkValuesAlignment(soa, &SoA::element::value, "value", bitAlignment);
-  checkValuesAlignment(soa, &SoA::element::name, "name", bitAlignment);
-}
 void testSoA::checkAlignment() {
-  checkSoAAlignment(1, 1, 8);
-  checkSoAAlignment(10, 1, 8);
-  checkSoAAlignment(31, 1, 8);
-  checkSoAAlignment(32, 1, 8);
+  checkSoAAlignment(1, 1);
+  checkSoAAlignment(10, 1);
+  checkSoAAlignment(31, 1);
+  checkSoAAlignment(32, 1);
 
-  checkSoAAlignment(1,64, 8*64);
-  checkSoAAlignment(10,64, 8*64);
-  checkSoAAlignment(31,64, 8*64);
-  checkSoAAlignment(32,64, 8*64);
+  checkSoAAlignment(1,64);
+  checkSoAAlignment(10,64);
+  checkSoAAlignment(31,64);
+  checkSoAAlignment(32,64);
 }
