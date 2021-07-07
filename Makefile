@@ -21,7 +21,7 @@ CXXFLAGS=-std=c++17 -O3 -g -Wall -Wno-attributes -pedantic -fPIC -MMD -march=nat
 NVCC_CXXFLAGS=--compiler-options '$(filter-out -pedantic -MMD, $(CXXFLAGS))'
 
 NVCCARCH= -gencode arch=compute_60,code=[sm_60,compute_60] -gencode arch=compute_70,code=[sm_70,compute_70] -gencode arch=compute_75,code=[sm_75,compute_75]
-NVCCFLAGS=-std=c++17 -O3 -g --compiler-bindir $(CXX) $(NVCCARCH)
+NVCCFLAGS=-std=c++17 -O3 -G --compiler-bindir $(CXX)
 LDFLAGS=-lrt -lcppunit -lcuda
 
 .PHONY: all clean distclean dump
@@ -48,7 +48,7 @@ $(CPPUNIT_EXECUTABLES): %: .tmp/%.cc.o .tmp/cppunit_runner.cc.o Makefile
 
 $(CUDA_EXECUTABLES): %: .tmp/%.cc.o .tmp/%.cu.o .tmp/cppunit_runner.cc.o Makefile
 	echo Deps: $+
-	$(NVCC) $(NVCCFLAGS) $(LDFLAGS) $(filter-out Makefile, $+) -o $@
+	$(NVCC) $(NVCCFLAGS) $(NVCCARCH) $(LDFLAGS) $(filter-out Makefile, $+) -o $@
 
 .tmp/%.cc.o: %.cc Makefile
 	@mkdir -p .tmp
@@ -56,11 +56,11 @@ $(CUDA_EXECUTABLES): %: .tmp/%.cc.o .tmp/%.cu.o .tmp/cppunit_runner.cc.o Makefil
 
 .tmp/%.cu.o: %.cu Makefile
 	@mkdir -p .tmp
-	$(NVCC)  -dc $(NVCCFLAGS) $(NVCC_CXXFLAGS) --verbose -c $< -o $@
+	$(NVCC)  -dc $(NVCCFLAGS) $(NVCCARCH) $(NVCC_CXXFLAGS) --verbose -c $< -o $@
 
 .tmp/%.cu.ptx: %.cu Makefile
 	@mkdir -p .tmp
-	$(NVCC) $(NVCCFLAGS) --ptx $< -o $@
+	$(NVCC) $(NVCCFLAGS) --ptx --source-in-ptx -gencode arch=compute_75,code=[sm_75,compute_75] $(NVCC_CXXFLAGS) $< -o $@
 	
 .tmp/%.cc.i: %.cc Makefile
 	 @mkdir -p .tmp

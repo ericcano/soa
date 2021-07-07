@@ -13,9 +13,11 @@
 #ifdef __CUDACC__
 #define SOA_HOST_ONLY __host__
 #define SOA_HOST_DEVICE __host__ __device__
+#define SOA_HOST_DEVICE_INLINE __host__ __device__ __forceinline__
 #else
 #define SOA_HOST_ONLY
 #define SOA_HOST_DEVICE
+#define SOA_HOST_DEVICE_INLINE
 #endif
 
 // compile-time sized SoA
@@ -24,13 +26,13 @@
 template<typename T>
 class SoAValue {
 public:
-  SOA_HOST_DEVICE SoAValue(size_t i, T * col): idx_(i), col_(col) {}
-  SOA_HOST_DEVICE operator T&() { return col_[idx_]; }
-  SOA_HOST_DEVICE operator const T&() const { return col_[idx_]; }
-  SOA_HOST_DEVICE T* operator& () { return &col_[idx_]; }
-  SOA_HOST_DEVICE const T* operator& () const { return &col_[idx_]; }
+  SOA_HOST_DEVICE_INLINE SoAValue(size_t i, T * col): idx_(i), col_(col) {}
+  SOA_HOST_DEVICE_INLINE operator T&() { return col_[idx_]; }
+  SOA_HOST_DEVICE_INLINE operator const T&() const { return col_[idx_]; }
+  SOA_HOST_DEVICE_INLINE T* operator& () { return &col_[idx_]; }
+  SOA_HOST_DEVICE_INLINE const T* operator& () const { return &col_[idx_]; }
   template <typename T2>
-  SOA_HOST_DEVICE T& operator= (const T2& v) { col_[idx_] = v; return col_[idx_]; }
+  SOA_HOST_DEVICE_INLINE T& operator= (const T2& v) { col_[idx_] = v; return col_[idx_]; }
   typedef T valueType;
   static constexpr auto valueSize = sizeof(T);
 private:

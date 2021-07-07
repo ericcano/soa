@@ -17,7 +17,9 @@ class testSoA: public CppUnit::TestFixture {
   //CPPUNIT_TEST(initialTest);
   CPPUNIT_TEST(checkAlignment);
   CPPUNIT_TEST(fill);
+  CPPUNIT_TEST(randomFill);
   CPPUNIT_TEST(crossProduct);
+  CPPUNIT_TEST(randomCrossProduct);
   CPPUNIT_TEST_SUITE_END();
 
 /* SoA and AoS structures definitions */  
@@ -27,7 +29,9 @@ public:
   void initialTest();
   void checkAlignment();
   void fill();
+  void randomFill();
   void crossProduct();
+  void randomCrossProduct();
   
   declare_SoA_template(SoA,
     // predefined static scalars
