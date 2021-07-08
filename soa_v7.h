@@ -26,18 +26,17 @@
 template<typename T>
 class SoAValue {
 public:
-  SOA_HOST_DEVICE_INLINE SoAValue(size_t i, T * col): idx_(i), col_(col) {}
-  SOA_HOST_DEVICE_INLINE operator T&() { return col_[idx_]; }
-  SOA_HOST_DEVICE_INLINE operator const T&() const { return col_[idx_]; }
-  SOA_HOST_DEVICE_INLINE T* operator& () { return &col_[idx_]; }
-  SOA_HOST_DEVICE_INLINE const T* operator& () const { return &col_[idx_]; }
+  SOA_HOST_DEVICE_INLINE SoAValue(size_t i, T * col): val_(col[i]) {}
+  SOA_HOST_DEVICE_INLINE operator T&() { return val_; }
+  SOA_HOST_DEVICE_INLINE operator const T&() const { return val_; }
+  SOA_HOST_DEVICE_INLINE T* operator& () { return &val_; }
+  SOA_HOST_DEVICE_INLINE const T* operator& () const { return &val_; }
   template <typename T2>
-  SOA_HOST_DEVICE_INLINE T& operator= (const T2& v) { col_[idx_] = v; return col_[idx_]; }
+  SOA_HOST_DEVICE_INLINE T& operator= (const T2& v) { return val_ = v; }
   typedef T valueType;
   static constexpr auto valueSize = sizeof(T);
 private:
-  size_t idx_;
-  T *col_;
+  T &val_;
 };
 
 /* declare "scalars" (one value shared across the whole SoA) and "columns" (one value per element) */
