@@ -53,24 +53,37 @@ namespace {
     r.z = a.x * b.y - a.y * b.x;
   }
 
-  // Simple cross product (SoA)
-  __global__ void indirectCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b) {
+  // Simple indiredt cross product (SoA)
+  __global__ void indirectCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= min(r.nElements(), min(a.nElements(), b.nElements()))) return;
+    if (i >= nElements) return;
     // C++ does not allow creating non-const references to temporary variables
     // this workaround makes the temporary variable 
     auto ri = r[i];
-    // Print addresses for a few samples
-    if (not i%10) {
-      // TODO: the output of this is fishy, we expect equality. The rest seems to work though (ongoing).
-      printf ("i=%zd &r[i].x=%p &ri.x=%p\n", i, &r[i].x, &ri.x);
-    }
     crossProduct(ri, a[i], b[i]);
   }
 
+  // Simple direct cross product (SoA)
+  __global__ void directCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nElements) return;
+    r[i].x = a[i].y * b[i].z - a[i].z * b[i].y;
+    r[i].y = a[i].z * b[i].x - a[i].x * b[i].z;
+    r[i].z = a[i].x * b[i].y - a[i].y * b[i].x;
+  }
+
+  // Hand-made cross product as a reference (SoA)
+  __global__ void handcraftedCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nElements) return;
+    r.x()[i] = a.y()[i] * b.y()[i] - a.z()[i] * b.y()[i];
+    r.y()[i] = a.z()[i] * b.x()[i] - a.x()[i] * b.z()[i];
+    r.z()[i] = a.x()[i] * b.y()[i] - a.y()[i] * b.x()[i];
+  }
+
   // Simple cross product (SoA on CPU)
-  __host__ void indirectCPUcrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b) {
-    for (size_t i =0; i< min(r.nElements(), min(a.nElements(), b.nElements())); ++i) {
+  __host__ void indirectCPUcrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
+    for (size_t i =0; i< nElements; ++i) {
       // This version is also affected.
       auto ri = r[i];
       crossProduct(ri, a[i], b[i]);
@@ -234,7 +247,11 @@ void testSoA::crossProduct() {
   // Call kernels, get result. Also fill up result SoA to ensure the results go in the right place.
   fillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAA);
   fillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAR);
-  indirectCrossProductSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAR, deviceSoAA, deviceSoAA);
+  indirectCrossProductSoA<<<
+    (elementsCount - 1)/deviceProperties.warpSize + 1,
+    deviceProperties.warpSize,
+    0, stream
+  >>>(deviceSoAR, deviceSoAA, deviceSoAA, elementsCount);
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockA.get(), deviceSoABlockA.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, stream));
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockR.get(), deviceSoABlockR.get(), SoA::computeDataSize(hostSoAR.nElements()), cudaMemcpyDeviceToHost, stream));
   CUDA_UNIT_CHECK(cudaStreamSynchronize(stream));
@@ -285,7 +302,11 @@ void testSoA::randomCrossProduct() {
   randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAA, 0xdeadbeef);
   randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAB, 0xcafefade);
   randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAR, 0xfadedcab);
-  indirectCrossProductSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAR, deviceSoAA, deviceSoAB);
+  indirectCrossProductSoA<<<
+    (elementsCount - 1)/deviceProperties.warpSize + 1,
+    deviceProperties.warpSize,
+    0, stream
+  >>>(deviceSoAR, deviceSoAA, deviceSoAB, elementsCount);
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockA.get(), deviceSoABlockA.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, stream));
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockB.get(), deviceSoABlockB.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, stream));
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockR.get(), deviceSoABlockR.get(), SoA::computeDataSize(hostSoAR.nElements()), cudaMemcpyDeviceToHost, stream));

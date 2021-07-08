@@ -17,7 +17,7 @@
 #else
 #define SOA_HOST_ONLY
 #define SOA_HOST_DEVICE
-#define SOA_HOST_DEVICE_INLINE
+#define SOA_HOST_DEVICE_INLINE inline
 #endif
 
 // compile-time sized SoA
@@ -122,7 +122,7 @@ private:
   _ACCUMULATE_SOA_ELEMENT_IMPL TYPE_NAME
 
 #define _DECLARE_SOA_CONST_ELEMENT_ACCESSOR_IMPL(IS_COLUMN, TYPE, NAME)                                                             \
-  SOA_HOST_DEVICE                                                                                                                   \
+  SOA_HOST_DEVICE_INLINE                                                                                                            \
   BOOST_PP_IIF(IS_COLUMN,                                                                                                           \
     TYPE const & NAME() { return * (soa_. NAME () + index_); }                                                                      \
   ,                                                                                                                                 \
@@ -171,18 +171,17 @@ private:
   BOOST_PP_EXPAND(_DECLARE_ELEMENT_CONSTR_CALL_IMPL TYPE_NAME)
 
 #define _DECLARE_SOA_ACCESSOR_IMPL(IS_COLUMN, TYPE, NAME)                                                                           \
-  SOA_HOST_DEVICE                                                                                                                   \
   BOOST_PP_IIF(IS_COLUMN,                                                                                                           \
-    TYPE* NAME() { return BOOST_PP_CAT(NAME, _); }                                                                                  \
+    SOA_HOST_DEVICE_INLINE TYPE* NAME() { return BOOST_PP_CAT(NAME, _); }                                                           \
   ,                                                                                                                                 \
-    TYPE& NAME() { return * BOOST_PP_CAT(NAME, _); }                                                                                \
+    SOA_HOST_DEVICE_INLINE TYPE& NAME() { return * BOOST_PP_CAT(NAME, _); }                                                         \
   )
 
 #define _DECLARE_SOA_ACCESSOR(R, DATA, TYPE_NAME)                                                                                   \
   BOOST_PP_EXPAND(_DECLARE_SOA_ACCESSOR_IMPL TYPE_NAME)
 
 #define _DECLARE_SOA_CONST_ACCESSOR_IMPL(IS_COLUMN, TYPE, NAME)                                                                     \
-  SOA_HOST_DEVICE                                                                                                                   \
+  SOA_HOST_DEVICE_INLINE                                                                                                            \
   BOOST_PP_IIF(IS_COLUMN,                                                                                                           \
     TYPE const* NAME() const { return BOOST_PP_CAT(NAME, _); }                                                                      \
   ,                                                                                                                                 \
@@ -240,8 +239,8 @@ struct CLASS {                                                                  
     return ret;                                                                                                                     \
   }                                                                                                                                 \
                                                                                                                                     \
-  SOA_HOST_DEVICE size_t nElements() const { return nElements_; }                                                                   \
-  SOA_HOST_DEVICE size_t byteAlignment() const { return byteAlignment_; }                                                           \
+  SOA_HOST_DEVICE_INLINE size_t nElements() const { return nElements_; }                                                            \
+  SOA_HOST_DEVICE_INLINE size_t byteAlignment() const { return byteAlignment_; }                                                    \
                                                                                                                                     \
   /* Constructor relying on user provided storage */                                                                                \
   CLASS(std::byte* mem, size_t nElements, size_t byteAlignment = defaultAlignment):                                                 \
@@ -255,7 +254,7 @@ struct CLASS {                                                                  
                                                                                                                                     \
   /* AoS-like accessor to individual elements */                                                                                    \
   struct const_element {                                                                                                            \
-    SOA_HOST_DEVICE                                                                                                                 \
+    SOA_HOST_DEVICE_INLINE                                                                                                          \
     const_element(CLASS const& soa, int index) :                                                                                    \
       soa_(soa),                                                                                                                    \
       index_(index)                                                                                                                 \
@@ -269,14 +268,14 @@ struct CLASS {                                                                  
   };                                                                                                                                \
                                                                                                                                     \
   struct element {                                                                                                                  \
-    SOA_HOST_DEVICE                                                                                                                 \
+    SOA_HOST_DEVICE_INLINE                                                                                                          \
     element(size_t index,                                                                                                           \
       /* Turn Boost PP */                                                                                                           \
       _ITERATE_ON_VALUE_TYPE_COMMA(_DECLARE_ELEMENT_VALUE_ARG, index, _VALUE_TYPE_COLUMN, __VA_ARGS__)                              \
     ):                                                                                                                              \
       _ITERATE_ON_VALUE_TYPE_COMMA(_DECLARE_ELEMENT_VALUE_MEMBER_INITIALISATION, index, _VALUE_TYPE_COLUMN, __VA_ARGS__)            \
        {}                                                                                                                           \
-    SOA_HOST_DEVICE                                                                                                                 \
+    SOA_HOST_DEVICE_INLINE                                                                                                          \
     element& operator=(const element& other) {                                                                                      \
       _ITERATE_ON_VALUE_TYPE(_DECLARE_ELEMENT_VALUE_COPY, ~, _VALUE_TYPE_COLUMN, __VA_ARGS__)                                       \
       return *this;                                                                                                                 \
@@ -285,14 +284,14 @@ struct CLASS {                                                                  
   };                                                                                                                                \
                                                                                                                                     \
   /* AoS-like accessor */                                                                                                           \
-  SOA_HOST_DEVICE                                                                                                                   \
+  SOA_HOST_DEVICE_INLINE                                                                                                            \
   element operator[](size_t index) {                                                                                                \
     rangeCheck(index);                                                                                                              \
     return element(index,                                                                                                           \
         _ITERATE_ON_VALUE_TYPE_COMMA(_DECLARE_ELEMENT_CONSTR_CALL, ~, _VALUE_TYPE_COLUMN, __VA_ARGS__) );                           \
   }                                                                                                                                 \
                                                                                                                                     \
-SOA_HOST_DEVICE                                                                                                                     \
+  SOA_HOST_DEVICE_INLINE                                                                                                            \
   const element operator[](size_t index) const {                                                                                    \
     rangeCheck(index);                                                                                                              \
     return element(index,                                                                                                           \
@@ -308,8 +307,8 @@ SOA_HOST_DEVICE                                                                 
                                                                                                                                     \
 private:                                                                                                                            \
   /* Range checker conditional to the macro _DO_RANGECHECK */                                                                       \
-  SOA_HOST_DEVICE                                                                                                                   \
-  inline void rangeCheck(size_t index) const {                                                                                      \
+  SOA_HOST_DEVICE_INLINE                                                                                                            \
+  void rangeCheck(size_t index) const {                                                                                      \
     if constexpr (_DO_RANGECHECK) {                                                                                                 \
       if (index >= nElements_) {                                                                                                    \
         printf("In " #CLASS "::rangeCheck(): index out of range: %zu with nElements: %zu\n", index, nElements_);                    \
@@ -324,4 +323,3 @@ private:                                                                        
   size_t byteAlignment_;                                                                                                            \
   _ITERATE_ON_ALL(_DECLARE_SOA_DATA_MEMBER, ~, __VA_ARGS__)                                                                         \
 }
-
