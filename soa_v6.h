@@ -19,7 +19,7 @@
 
 // compile-time sized SoA
 
-// Helper template managing the value within it column
+// Helper template managing the value within its column
 template<typename T>
 class SoAValue {
 public:

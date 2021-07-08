@@ -20,6 +20,7 @@ class testSoA: public CppUnit::TestFixture {
   CPPUNIT_TEST(randomFill);
   CPPUNIT_TEST(crossProduct);
   CPPUNIT_TEST(randomCrossProduct);
+  CPPUNIT_TEST(randomCrossProductEigen);
   CPPUNIT_TEST_SUITE_END();
 
 /* SoA and AoS structures definitions */  
@@ -32,6 +33,7 @@ public:
   void randomFill();
   void crossProduct();
   void randomCrossProduct();
+  void randomCrossProductEigen();
   
   declare_SoA_template(SoA,
     // predefined static scalars
@@ -63,7 +65,7 @@ public:
 private:
   // Constants
   static constexpr int defaultDevice = 0;
-  static constexpr size_t elementsCount = 100;
+  static constexpr size_t elementsCount = 10000;
   
   // Helper functions
   template <typename T>

@@ -4,6 +4,9 @@
 
 #include <curand_kernel.h>
 
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+
 #define CUDA_UNIT_CHECK(A) CPPUNIT_ASSERT_EQUAL(cudaSuccess, A)
 
 namespace {
@@ -33,7 +36,7 @@ namespace {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= soa.nElements()) return;
     curandState state;
-    curand_init(seed, i, 0, &state);
+    curand_init(seed + i, 0, 0, &state);
     soa[i].x = curand_uniform_double(&state);
     soa[i].y = curand_uniform_double(&state);
     soa[i].z = curand_uniform_double(&state);
@@ -79,6 +82,23 @@ namespace {
     r.x()[i] = a.y()[i] * b.y()[i] - a.z()[i] * b.y()[i];
     r.y()[i] = a.z()[i] * b.x()[i] - a.x()[i] * b.z()[i];
     r.z()[i] = a.x()[i] * b.y()[i] - a.y()[i] * b.x()[i];
+  }
+  
+  using V3 = Eigen::Vector3d;
+  using DynStride = Eigen::InnerStride<Eigen::Dynamic>;
+  using CStride = Eigen::InnerStride<1024>;
+  using MapV3 =  Eigen::Map<V3,0, DynStride>;
+  using CMapV3 =  Eigen::Map<const V3,0,  DynStride>;
+  
+   // Eigen based cross product
+  __global__ void eigenCrossProductSoA(double* rx, const double* ax, const double* bx, size_t nElements, size_t stride) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nElements) return;
+
+    CMapV3 ma(ax+i, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(stride));
+    CMapV3 mb(bx+i, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(stride));
+    MapV3 mr(rx+i, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(stride));
+    mr = ma.cross(mb);
   }
 
   // Simple cross product (SoA on CPU)
@@ -281,8 +301,10 @@ void testSoA::randomCrossProduct() {
   CUDA_UNIT_CHECK(cudaGetDeviceCount(&deviceCount));
   CPPUNIT_ASSERT(deviceCount > 0);
   CUDA_UNIT_CHECK(cudaGetDeviceProperties(&deviceProperties, defaultDevice));
-  cudaStream_t stream;
-  CUDA_UNIT_CHECK(cudaStreamCreate(&stream));
+  cudaStream_t streamA, streamB, streamR;
+  CUDA_UNIT_CHECK(cudaStreamCreate(&streamA));
+  CUDA_UNIT_CHECK(cudaStreamCreate(&streamB));
+  CUDA_UNIT_CHECK(cudaStreamCreate(&streamR));
   
   // Allocate memory and populate SoA descriptors (device A as source and R as result of cross product)
   auto deviceSoABlockA = make_device_unique(SoA::computeDataSize(elementsCount));
@@ -299,18 +321,110 @@ void testSoA::randomCrossProduct() {
   SoA hostSoAR(hostSoABlockR.get(), elementsCount);
   
   // Call kernels, get result. Also fill up result SoA to ensure the results go in the right place.
-  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAA, 0xdeadbeef);
-  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAB, 0xcafefade);
-  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoAR, 0xfadedcab);
+  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamA>>>(deviceSoAA, 0xdeadbeef);
+  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamB>>>(deviceSoAB, 0xcafefade);
+  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamR>>>(deviceSoAR, 0xfadedcab);
+  cudaEvent_t eventA, eventB;
+  CUDA_UNIT_CHECK(cudaEventCreate(&eventA));
+  CUDA_UNIT_CHECK(cudaEventCreate(&eventB));
+  CUDA_UNIT_CHECK(cudaEventRecord(eventA, streamA));
+  CUDA_UNIT_CHECK(cudaEventRecord(eventB, streamB));
+  CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventA));
+  CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventB));
   indirectCrossProductSoA<<<
     (elementsCount - 1)/deviceProperties.warpSize + 1,
     deviceProperties.warpSize,
-    0, stream
+    0, streamR
   >>>(deviceSoAR, deviceSoAA, deviceSoAB, elementsCount);
-  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockA.get(), deviceSoABlockA.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, stream));
-  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockB.get(), deviceSoABlockB.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, stream));
-  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockR.get(), deviceSoABlockR.get(), SoA::computeDataSize(hostSoAR.nElements()), cudaMemcpyDeviceToHost, stream));
-  CUDA_UNIT_CHECK(cudaStreamSynchronize(stream));
+  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockA.get(), deviceSoABlockA.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamA));
+  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockB.get(), deviceSoABlockB.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamB));
+  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockR.get(), deviceSoABlockR.get(), SoA::computeDataSize(hostSoAR.nElements()), cudaMemcpyDeviceToHost, streamR));
+  CUDA_UNIT_CHECK(cudaStreamSynchronize(streamR));
+  CUDA_UNIT_CHECK(cudaStreamSynchronize(streamA));
+  CUDA_UNIT_CHECK(cudaStreamSynchronize(streamB));
+
+  // Validate result
+  bool pass = true;
+  size_t i = 0;
+  for (; pass && i< hostSoAR.nElements(); i++) {
+    checkCrossProduct(hostSoAR, hostSoAA, hostSoAB, i, std::numeric_limits<double>::epsilon(), pass);
+  }
+  if (!pass) {
+    // Recompute the expected result
+    testSoA::AoSelement expected;
+    ::crossProduct(expected, hostSoAA[i], hostSoAB[i]);
+    std::cout << "In " << __FUNCTION__ << " check failed at i= " << i << std::endl;
+    std::cout << "result= ("   << hostSoAR[i].x << ", " << hostSoAR[i].y << ", " << hostSoAR[i].z << ")" << std::endl;
+    std::cout << "expected= (" << expected.x << ", " << expected.y << ", " << expected.z << ")" << std::endl;
+    std::cout << "A= (" << hostSoAA[i].x << ", " << hostSoAA[i].y << ", " << hostSoAA[i].z << ")" << std::endl;
+    std::cout << "B= (" << hostSoAB[i].x << ", " << hostSoAB[i].y << ", " << hostSoAB[i].z << ")" << std::endl;
+  } else {
+    std::cout << std::endl;
+    for (size_t j=0; j<10 && j<hostSoAR.nElements(); ++j) {
+      testSoA::AoSelement expected;
+      // Mixed computation AoS(single row) / SoA / SoA 
+      ::crossProduct(expected, hostSoAA[j], hostSoAB[j]);
+      std::cout << "In " << __FUNCTION__ << " check was OK. Sampling j= " << j << std::endl;
+      std::cout << "result= ("   << hostSoAR[j].x << ", " << hostSoAR[j].y << ", " << hostSoAR[j].z << ")" << std::endl;
+      std::cout << "expected= (" << expected.x << ", " << expected.y << ", " << expected.z << ")" << std::endl;
+      std::cout << "difference= (" << expected.x - hostSoAR[j].x << ", " << expected.y - hostSoAR[j].y  
+              << ", " << expected.z - hostSoAR[j].z << ")" << std::endl;
+      std::cout << "A= (" << hostSoAA[j].x << ", " << hostSoAA[j].y << ", " << hostSoAA[j].z << ")" << std::endl;
+      std::cout << "B= (" << hostSoAB[j].x << ", " << hostSoAB[j].y << ", " << hostSoAB[j].z << ")" << std::endl;
+    }
+  }
+  CPPUNIT_ASSERT(pass);
+}
+
+void testSoA::randomCrossProductEigen() {
+  // Get device, stream, memory
+  cudaDeviceProp deviceProperties;
+  int deviceCount=0;
+  CUDA_UNIT_CHECK(cudaGetDeviceCount(&deviceCount));
+  CPPUNIT_ASSERT(deviceCount > 0);
+  CUDA_UNIT_CHECK(cudaGetDeviceProperties(&deviceProperties, defaultDevice));
+  cudaStream_t streamA, streamB, streamR;
+  CUDA_UNIT_CHECK(cudaStreamCreate(&streamA));
+  CUDA_UNIT_CHECK(cudaStreamCreate(&streamB));
+  CUDA_UNIT_CHECK(cudaStreamCreate(&streamR));
+  
+  // Allocate memory and populate SoA descriptors (device A as source and R as result of cross product)
+  auto deviceSoABlockA = make_device_unique(SoA::computeDataSize(elementsCount));
+  auto deviceSoABlockB = make_device_unique(SoA::computeDataSize(elementsCount));
+  auto deviceSoABlockR = make_device_unique(SoA::computeDataSize(elementsCount));
+  auto hostSoABlockA = make_host_unique(SoA::computeDataSize(elementsCount));
+  auto hostSoABlockB = make_host_unique(SoA::computeDataSize(elementsCount));
+  auto hostSoABlockR = make_host_unique(SoA::computeDataSize(elementsCount));
+  SoA deviceSoAA(deviceSoABlockA.get(), elementsCount);
+  SoA deviceSoAB(deviceSoABlockB.get(), elementsCount);
+  SoA deviceSoAR(deviceSoABlockR.get(), elementsCount);
+  SoA hostSoAA(hostSoABlockA.get(), elementsCount);
+  SoA hostSoAB(hostSoABlockB.get(), elementsCount);
+  SoA hostSoAR(hostSoABlockR.get(), elementsCount);
+  
+  // Call kernels, get result. Also fill up result SoA to ensure the results go in the right place.
+  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamA>>>(deviceSoAA, 0xdeadbeef);
+  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamB>>>(deviceSoAB, 0xcafefade);
+  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamR>>>(deviceSoAR, 0xfadedcab);
+  cudaEvent_t eventA, eventB;
+  CUDA_UNIT_CHECK(cudaEventCreate(&eventA));
+  CUDA_UNIT_CHECK(cudaEventCreate(&eventB));
+  CUDA_UNIT_CHECK(cudaEventRecord(eventA, streamA));
+  CUDA_UNIT_CHECK(cudaEventRecord(eventB, streamB));
+  CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventA));
+  CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventB));
+  const size_t stride = (((elementsCount * sizeof(double) - 1) / deviceSoAA.byteAlignment() ) + 1) * deviceSoAA.byteAlignment() / sizeof(double);
+  eigenCrossProductSoA<<<
+    (elementsCount - 1)/deviceProperties.warpSize + 1,
+    deviceProperties.warpSize,
+    0, streamR
+  >>>(deviceSoAR.x(), deviceSoAA.x(), deviceSoAB.x(), elementsCount, stride);
+  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockA.get(), deviceSoABlockA.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamA));
+  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockB.get(), deviceSoABlockB.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamB));
+  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockR.get(), deviceSoABlockR.get(), SoA::computeDataSize(hostSoAR.nElements()), cudaMemcpyDeviceToHost, streamR));
+  CUDA_UNIT_CHECK(cudaStreamSynchronize(streamR));
+  CUDA_UNIT_CHECK(cudaStreamSynchronize(streamA));
+  CUDA_UNIT_CHECK(cudaStreamSynchronize(streamB));
 
   // Validate result
   bool pass = true;
