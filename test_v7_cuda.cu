@@ -79,7 +79,7 @@ namespace {
   __global__ void handcraftedCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nElements) return;
-    r.x()[i] = a.y()[i] * b.y()[i] - a.z()[i] * b.y()[i];
+    r.x()[i] = a.y()[i] * b.z()[i] - a.z()[i] * b.y()[i];
     r.y()[i] = a.z()[i] * b.x()[i] - a.x()[i] * b.z()[i];
     r.z()[i] = a.x()[i] * b.y()[i] - a.y()[i] * b.x()[i];
   }

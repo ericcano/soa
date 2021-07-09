@@ -27,7 +27,7 @@ CXXFLAGS=-std=c++17 -O3 -g -Wall -Wno-attributes -pedantic -fPIC -MMD -march=nat
 NVCC_CXXFLAGS=--compiler-options '$(filter-out -pedantic -MMD, $(CXXFLAGS))'
 
 NVCCARCH= -gencode arch=compute_60,code=[sm_60,compute_60] -gencode arch=compute_70,code=[sm_70,compute_70] -gencode arch=compute_75,code=[sm_75,compute_75]
-NVCCFLAGS=-std=c++17 -O3 -G -MMD --compiler-bindir $(CXX)
+NVCCFLAGS=-std=c++17 -O3 --generate-line-info -MMD --compiler-bindir $(CXX)
 LDFLAGS=-lrt -lcppunit -lcuda -L$(LIBS)
 
 .PHONY: all clean distclean dump
