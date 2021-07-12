@@ -183,7 +183,41 @@ namespace {
     if (abs(myRes.y - resultSoA[i].y) > ref) { pass = false; return; }
     if (abs(myRes.z - resultSoA[i].z) > ref) { pass = false; return; }
   }
-}
+
+  class StreamTimer {
+  public:
+    StreamTimer() {
+      if (cudaSuccess != cudaEventCreate(&beginning_) 
+          || cudaSuccess != cudaEventCreate(&end_))
+        throw std::bad_alloc();
+    }
+    
+    ~StreamTimer() {
+      cudaEventDestroy(beginning_);
+      cudaEventDestroy(end_);
+    }
+    
+    void start(cudaStream_t s) {
+      CUDA_UNIT_CHECK(cudaEventRecord(beginning_, s));
+    }
+    
+    void stop(cudaStream_t s) {
+      CUDA_UNIT_CHECK(cudaEventRecord(end_, s));
+      
+    }
+    
+    float mSecs() {
+      CUDA_UNIT_CHECK(cudaEventSynchronize(beginning_));
+      CUDA_UNIT_CHECK(cudaEventSynchronize(end_));
+      float ret;
+      CUDA_UNIT_CHECK(cudaEventElapsedTime(&ret, beginning_, end_));
+      return ret;
+    }
+    
+  private:
+    cudaEvent_t beginning_, end_;
+  };
+} // Anonymous namesapce
 
 void testSoA::fill() {
   // Get device, stream, memory
@@ -284,12 +318,6 @@ void testSoA::crossProduct() {
   if (!pass) {
     std::cout << "In " << typeid(*this).name() << " check failed at i= " << i << ")" << std::endl;
     std::cout << "result[" << i << "].x=" << hostSoAR[i].x << " .y=" << hostSoAR[i].y << " .z=" << hostSoAR[i].z << std::endl;
-  } else {
-    std::cout << std::endl;
-    for (size_t j=0; j<10 ; ++j) {
-      std::cout << "result[" << j << "]].x=" << hostSoAR[j].x << " .y=" << hostSoAR[j].y << " .z=" << hostSoAR[j].z << std::endl;
-      std::cout << "A[" << j << "]].x=" << hostSoAA[j].x << " .y=" << hostSoAA[j].y << " .z=" << hostSoAA[j].z << std::endl;
-    }
   }
   CPPUNIT_ASSERT(pass);
 }
@@ -320,6 +348,8 @@ void testSoA::randomCrossProduct() {
   SoA hostSoAB(hostSoABlockB.get(), elementsCount);
   SoA hostSoAR(hostSoABlockR.get(), elementsCount);
   
+  // Timer to measure performance
+  ::StreamTimer timer;
   // Call kernels, get result. Also fill up result SoA to ensure the results go in the right place.
   randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamA>>>(deviceSoAA, 0xdeadbeef);
   randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamB>>>(deviceSoAB, 0xcafefade);
@@ -331,11 +361,13 @@ void testSoA::randomCrossProduct() {
   CUDA_UNIT_CHECK(cudaEventRecord(eventB, streamB));
   CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventA));
   CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventB));
+  timer.start(streamR);
   indirectCrossProductSoA<<<
     (elementsCount - 1)/deviceProperties.warpSize + 1,
     deviceProperties.warpSize,
     0, streamR
   >>>(deviceSoAR, deviceSoAA, deviceSoAB, elementsCount);
+  timer.stop(streamR);
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockA.get(), deviceSoABlockA.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamA));
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockB.get(), deviceSoABlockB.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamB));
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockR.get(), deviceSoABlockR.get(), SoA::computeDataSize(hostSoAR.nElements()), cudaMemcpyDeviceToHost, streamR));
@@ -358,21 +390,8 @@ void testSoA::randomCrossProduct() {
     std::cout << "expected= (" << expected.x << ", " << expected.y << ", " << expected.z << ")" << std::endl;
     std::cout << "A= (" << hostSoAA[i].x << ", " << hostSoAA[i].y << ", " << hostSoAA[i].z << ")" << std::endl;
     std::cout << "B= (" << hostSoAB[i].x << ", " << hostSoAB[i].y << ", " << hostSoAB[i].z << ")" << std::endl;
-  } else {
-    std::cout << std::endl;
-    for (size_t j=0; j<10 && j<hostSoAR.nElements(); ++j) {
-      testSoA::AoSelement expected;
-      // Mixed computation AoS(single row) / SoA / SoA 
-      ::crossProduct(expected, hostSoAA[j], hostSoAB[j]);
-      std::cout << "In " << __FUNCTION__ << " check was OK. Sampling j= " << j << std::endl;
-      std::cout << "result= ("   << hostSoAR[j].x << ", " << hostSoAR[j].y << ", " << hostSoAR[j].z << ")" << std::endl;
-      std::cout << "expected= (" << expected.x << ", " << expected.y << ", " << expected.z << ")" << std::endl;
-      std::cout << "difference= (" << expected.x - hostSoAR[j].x << ", " << expected.y - hostSoAR[j].y  
-              << ", " << expected.z - hostSoAR[j].z << ")" << std::endl;
-      std::cout << "A= (" << hostSoAA[j].x << ", " << hostSoAA[j].y << ", " << hostSoAA[j].z << ")" << std::endl;
-      std::cout << "B= (" << hostSoAB[j].x << ", " << hostSoAB[j].y << ", " << hostSoAB[j].z << ")" << std::endl;
-    }
   }
+  std::cout << "indirectCrossProductSoA time=" << timer.mSecs() * 1000 << " us." << std::endl;
   CPPUNIT_ASSERT(pass);
 }
 
@@ -402,6 +421,8 @@ void testSoA::randomCrossProductEigen() {
   SoA hostSoAB(hostSoABlockB.get(), elementsCount);
   SoA hostSoAR(hostSoABlockR.get(), elementsCount);
   
+  // Timer to measure performance
+  ::StreamTimer timer;
   // Call kernels, get result. Also fill up result SoA to ensure the results go in the right place.
   randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamA>>>(deviceSoAA, 0xdeadbeef);
   randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, streamB>>>(deviceSoAB, 0xcafefade);
@@ -414,11 +435,13 @@ void testSoA::randomCrossProductEigen() {
   CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventA));
   CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventB));
   const size_t stride = (((elementsCount * sizeof(double) - 1) / deviceSoAA.byteAlignment() ) + 1) * deviceSoAA.byteAlignment() / sizeof(double);
+  timer.start(streamR);
   eigenCrossProductSoA<<<
     (elementsCount - 1)/deviceProperties.warpSize + 1,
     deviceProperties.warpSize,
     0, streamR
   >>>(deviceSoAR.x(), deviceSoAA.x(), deviceSoAB.x(), elementsCount, stride);
+  timer.stop(streamR);
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockA.get(), deviceSoABlockA.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamA));
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockB.get(), deviceSoABlockB.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamB));
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockR.get(), deviceSoABlockR.get(), SoA::computeDataSize(hostSoAR.nElements()), cudaMemcpyDeviceToHost, streamR));
@@ -441,20 +464,7 @@ void testSoA::randomCrossProductEigen() {
     std::cout << "expected= (" << expected.x << ", " << expected.y << ", " << expected.z << ")" << std::endl;
     std::cout << "A= (" << hostSoAA[i].x << ", " << hostSoAA[i].y << ", " << hostSoAA[i].z << ")" << std::endl;
     std::cout << "B= (" << hostSoAB[i].x << ", " << hostSoAB[i].y << ", " << hostSoAB[i].z << ")" << std::endl;
-  } else {
-    std::cout << std::endl;
-    for (size_t j=0; j<10 && j<hostSoAR.nElements(); ++j) {
-      testSoA::AoSelement expected;
-      // Mixed computation AoS(single row) / SoA / SoA 
-      ::crossProduct(expected, hostSoAA[j], hostSoAB[j]);
-      std::cout << "In " << __FUNCTION__ << " check was OK. Sampling j= " << j << std::endl;
-      std::cout << "result= ("   << hostSoAR[j].x << ", " << hostSoAR[j].y << ", " << hostSoAR[j].z << ")" << std::endl;
-      std::cout << "expected= (" << expected.x << ", " << expected.y << ", " << expected.z << ")" << std::endl;
-      std::cout << "difference= (" << expected.x - hostSoAR[j].x << ", " << expected.y - hostSoAR[j].y  
-              << ", " << expected.z - hostSoAR[j].z << ")" << std::endl;
-      std::cout << "A= (" << hostSoAA[j].x << ", " << hostSoAA[j].y << ", " << hostSoAA[j].z << ")" << std::endl;
-      std::cout << "B= (" << hostSoAB[j].x << ", " << hostSoAB[j].y << ", " << hostSoAB[j].z << ")" << std::endl;
-    }
   }
+  std::cout << "eigenCrossProductSoA time=" << timer.mSecs() * 1000 << " us." << std::endl;
   CPPUNIT_ASSERT(pass);
 }
