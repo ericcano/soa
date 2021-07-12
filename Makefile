@@ -3,7 +3,7 @@ OBJ=$(SRC:%=.tmp/%.o)
 DEP=$(SRC:%=.tmp/%.d)
 TEST=test_v0 test_v1 test_v2 test_v3 test_v4 test_v5
 CPPUNIT_TEST=test_v5 test_v6
-CUDA_TEST=test_v7
+CUDA_TEST=test_v7 test_v8
 
 # Can be overridden on the command line with CXX=/opt/rh/devtoolset-10/root/bin/g++
 # on Centos7 (with package devtools-10).
