@@ -50,13 +50,13 @@ namespace {
 
   // Simple cross product for elements
   template <typename T, typename T2>
-  __host__ __device__ __forceinline__ void crossProduct(T & r, const T2 & a, const T2 & b) {
+  __host__ __device__ __forceinline__ void crossProduct(T & r, const T2 & __restrict__ a, const T2 & __restrict__ b) {
     r.x = a.y * b.z - a.z * b.y;
     r.y = a.z * b.x - a.x * b.z;
     r.z = a.x * b.y - a.y * b.x;
   }
 
-  // Simple indiredt cross product (SoA)
+  // Simple indirect cross product (SoA)
   __global__ void indirectCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nElements) return;
@@ -91,7 +91,7 @@ namespace {
   using CMapV3 =  Eigen::Map<const V3,0,  DynStride>;
   
    // Eigen based cross product
-  __global__ void eigenCrossProductSoA(double* rx, const double* ax, const double* bx, size_t nElements, size_t stride) {
+  __global__ void eigenCrossProductSoA(double* rx, const double* __restrict__ ax, const double* __restrict__ bx, size_t nElements, size_t stride) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nElements) return;
 
