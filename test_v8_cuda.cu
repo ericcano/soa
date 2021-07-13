@@ -12,7 +12,7 @@
 namespace {
   // fill element
   template <class T>
-  __host__ __device__ __forceinline__ void fillElement(T & e, size_t i) {
+  [[maybe_unused]] __host__ __device__ __forceinline__ void fillElement(T & e, size_t i) {
     e.x = 11.0 * i;
     e.y = 22.0 * i;
     e.z = 33.0 * i;
@@ -22,7 +22,7 @@ namespace {
   }
 
   // Fill up the elements of the SoA
-  __global__ void fillSoA(testSoA::SoA soa) {
+  [[maybe_unused]] __global__ void fillSoA(testSoA::SoA soa) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= soa.nElements()) return;
     // compiler does not belive we can use a temporary soa[i] to store results.
@@ -32,7 +32,7 @@ namespace {
   }
   
   // Fill elements with random data.
-  __global__ void randomFillSoA(testSoA::SoA soa, uint64_t seed) {
+  [[maybe_unused]] __global__ void randomFillSoA(testSoA::SoA soa, uint64_t seed) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= soa.nElements()) return;
     curandState state;
@@ -42,7 +42,7 @@ namespace {
     soa[i].z = curand_uniform_double(&state);
   }
 
-  __global__ void fillAoS(testSoA::AoSelement *aos, size_t nElements) {
+  [[maybe_unused]] __global__ void fillAoS(testSoA::AoSelement *aos, size_t nElements) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nElements) return;
     fillElement(aos[i], i);
@@ -50,14 +50,14 @@ namespace {
 
   // Simple cross product for elements
   template <typename T, typename T2>
-  __host__ __device__ __forceinline__ void crossProduct(T & r, const T2 & __restrict__ a, const T2 & __restrict__ b) {
+  [[maybe_unused]] __host__ __device__ __forceinline__ void crossProduct(T & r, const T2 & __restrict__ a, const T2 & __restrict__ b) {
     r.x = a.y * b.z - a.z * b.y;
     r.y = a.z * b.x - a.x * b.z;
     r.z = a.x * b.y - a.y * b.x;
   }
 
   // Simple indirect cross product (SoA)
-  __global__ void indirectCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
+  [[maybe_unused]] __global__ void indirectCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nElements) return;
     // C++ does not allow creating non-const references to temporary variables
@@ -67,7 +67,7 @@ namespace {
   }
 
   // Simple direct cross product (SoA)
-  __global__ void directCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
+  [[maybe_unused]] __global__ void directCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nElements) return;
     r[i].x = a[i].y * b[i].z - a[i].z * b[i].y;
@@ -76,7 +76,7 @@ namespace {
   }
 
   // Hand-made cross product as a reference (SoA)
-  __global__ void handcraftedCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
+  [[maybe_unused]] __global__ void handcraftedCrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nElements) return;
     r.x()[i] = a.y()[i] * b.z()[i] - a.z()[i] * b.y()[i];
@@ -91,7 +91,7 @@ namespace {
   using CMapV3 =  Eigen::Map<const V3,0,  DynStride>;
   
    // Eigen based cross product
-  __global__ void eigenCrossProductSoA(double* rx, const double* __restrict__ ax, const double* __restrict__ bx, size_t nElements, size_t stride) {
+  [[maybe_unused]] __global__ void eigenCrossProductSoA(double* rx, const double* __restrict__ ax, const double* __restrict__ bx, size_t nElements, size_t stride) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nElements) return;
 
@@ -102,7 +102,7 @@ namespace {
   }
 
   // Simple cross product (SoA on CPU)
-  __host__ void indirectCPUcrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
+  [[maybe_unused]] __host__ void indirectCPUcrossProductSoA(testSoA::SoA r, const testSoA::SoA a, const testSoA::SoA b, size_t nElements) {
     for (size_t i =0; i< nElements; ++i) {
       // This version is also affected.
       auto ri = r[i];
@@ -111,14 +111,14 @@ namespace {
   }
 
   // Simple cross product (AoS)
-  __global__ void crossProductAoS(testSoA::AoSelement *r,
+  [[maybe_unused]] __global__ void crossProductAoS(testSoA::AoSelement *r,
           testSoA::AoSelement *a, testSoA::AoSelement *b, size_t nElements) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nElements) return;
     crossProduct(r[i], a[i], b[i]);
   }
 
-  void hexdump(void *ptr, int buflen) {
+  [[maybe_unused]] void hexdump(void *ptr, int buflen) {
     /* From https://stackoverflow.com/a/29865 with adaptations */
     unsigned char *buf = (unsigned char*)ptr;
     int i, j;
@@ -141,7 +141,7 @@ namespace {
   // Check we find what we wanted to initialize.
   // Pass should be initialized to true.
   template <class T>
-  __host__ __device__ __forceinline__ void checkSoAelement(T soa, size_t i, bool & pass) {
+  [[maybe_unused]] __host__ __device__ __forceinline__ void checkSoAelement(T soa, size_t i, bool & pass) {
     if (i >= soa.nElements() || !pass) return;
     if (soa[i].x != 11.0 * i) { pass = false; return; }
     if (soa[i].y != 22.0 * i) { pass = false; return; }
@@ -153,7 +153,7 @@ namespace {
   // Check r[i].{x, y, z} are close enough to zero compared to a[i].{x,y,z} and b[i].{x,y,z}
   // to validate a cross product of a vector with itself produced a zero (enough) result.
   template <class T>
-  __host__ __device__ __forceinline__ void checkSoAelementNullityRealtiveToSquare(T resSoA, T referenceSoA, size_t i, double epsilon, bool & pass) {
+  [[maybe_unused]] __host__ __device__ __forceinline__ void checkSoAelementNullityRealtiveToSquare(T resSoA, T referenceSoA, size_t i, double epsilon, bool & pass) {
     if (i >= resSoA.nElements() || !pass) return;
     auto ref = max (abs(referenceSoA[i].x), 
                     max(abs(referenceSoA[i].y), 
@@ -167,7 +167,7 @@ namespace {
   // Check r[i].{x, y, z} are close enough to zero compared to a[i].{x,y,z} and b[i].{x,y,z}
   // to validate a cross product of a vector with itself produced a zero (enough) result.
   template <class T>
-  __host__ __device__ __forceinline__ void checkCrossProduct(T resultSoA, T aSoA, T bSoA, size_t i, double epsilon, bool & pass) {
+  [[maybe_unused]] __host__ __device__ __forceinline__ void checkCrossProduct(T resultSoA, T aSoA, T bSoA, size_t i, double epsilon, bool & pass) {
     if (i >= resultSoA.nElements() || !pass) return;
     auto refA = max (abs(aSoA[i].x), 
                      max(abs(aSoA[i].y), 
@@ -361,12 +361,15 @@ void testSoA::randomCrossProduct() {
   CUDA_UNIT_CHECK(cudaEventRecord(eventB, streamB));
   CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventA));
   CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventB));
+  // Run more to gather statistics
   timer.start(streamR);
-  indirectCrossProductSoA<<<
-    (elementsCount - 1)/deviceProperties.warpSize + 1,
-    deviceProperties.warpSize,
-    0, streamR
-  >>>(deviceSoAR, deviceSoAA, deviceSoAB, elementsCount);
+  for (size_t i=0; i<20; ++i) {
+    indirectCrossProductSoA<<<
+      (elementsCount - 1)/deviceProperties.warpSize + 1,
+      deviceProperties.warpSize,
+      0, streamR
+    >>>(deviceSoAR, deviceSoAA, deviceSoAB, elementsCount);
+  }
   timer.stop(streamR);
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockA.get(), deviceSoABlockA.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamA));
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockB.get(), deviceSoABlockB.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamB));
@@ -435,12 +438,15 @@ void testSoA::randomCrossProductEigen() {
   CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventA));
   CUDA_UNIT_CHECK(cudaStreamWaitEvent(streamR, eventB));
   const size_t stride = (((elementsCount * sizeof(double) - 1) / deviceSoAA.byteAlignment() ) + 1) * deviceSoAA.byteAlignment() / sizeof(double);
+  // Run more to gather statistics
   timer.start(streamR);
-  eigenCrossProductSoA<<<
-    (elementsCount - 1)/deviceProperties.warpSize + 1,
-    deviceProperties.warpSize,
-    0, streamR
-  >>>(deviceSoAR.x(), deviceSoAA.x(), deviceSoAB.x(), elementsCount, stride);
+  for (size_t i=0; i<20; ++i) {
+    eigenCrossProductSoA<<<
+      (elementsCount - 1)/deviceProperties.warpSize + 1,
+      deviceProperties.warpSize,
+      0, streamR
+    >>>(deviceSoAR.x(), deviceSoAA.x(), deviceSoAB.x(), elementsCount, stride);
+  }
   timer.stop(streamR);
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockA.get(), deviceSoABlockA.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamA));
   CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlockB.get(), deviceSoABlockB.get(), SoA::computeDataSize(hostSoAA.nElements()), cudaMemcpyDeviceToHost, streamB));

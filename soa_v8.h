@@ -29,9 +29,9 @@ public:
   SOA_HOST_DEVICE_INLINE SoAValue(size_t baseOffset, size_t index, P & parent):
     baseOffset_(baseOffset), index_(index), parent_(parent) {}
   SOA_HOST_DEVICE_INLINE operator T&() { return getRef(); }
-  SOA_HOST_DEVICE_INLINE operator const T&() const { return getRef(); }
+  SOA_HOST_DEVICE_INLINE operator const __restrict__ T&() const { return getRef(); }
   SOA_HOST_DEVICE_INLINE T* operator& () { return &getRef(); }
-  SOA_HOST_DEVICE_INLINE const T* operator& () const { return &getRef(); }
+  SOA_HOST_DEVICE_INLINE const __restrict__ T* operator& () const { return &getRef(); }
   template <typename T2>
   SOA_HOST_DEVICE_INLINE T& operator= (const T2& v) { return getRef() = v; }
   typedef T valueType;
@@ -42,7 +42,12 @@ private:
     return reinterpret_cast<T *>(&parent_.mem_[baseOffset_])[index_];
   }
   SOA_HOST_DEVICE_INLINE
-  const T& getRef() const {
+  const __restrict__ T& getRef() const {
+    if constexpr(!std::is_pointer<T>::value) {
+      const __restrict__ T * base = 
+        reinterpret_cast<const __restrict__ T *>(&parent_.mem_[baseOffset_]);
+      return base[index_];
+    }
     return reinterpret_cast<const T *>(&parent_.mem_[baseOffset_])[index_];
   }
   size_t baseOffset_, index_;
@@ -155,7 +160,7 @@ private:
 /* declare AoS-like element value members; these should expand,for columns only */
 /* We filter the value list beforehand to avoid having a comma inside a macro parameter */
 #define _DECLARE_ELEMENT_VALUE_COPY_IMPL(IS_COLUMN, TYPE, NAME)                                                                     \
-  static_cast<TYPE &>(NAME) = static_cast<std::add_const<TYPE>::type &>(other.NAME);
+  static_cast<TYPE &>(NAME) = static_cast<std::add_const<TYPE>::type __restrict__ &>(other.NAME);
 
 #define _DECLARE_ELEMENT_VALUE_COPY(R, DATA, TYPE_NAME)                                                                             \
   _DECLARE_ELEMENT_VALUE_COPY_IMPL TYPE_NAME
