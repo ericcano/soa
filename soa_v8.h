@@ -23,20 +23,30 @@
 // compile-time sized SoA
 
 // Helper template managing the value within it column
-template<typename T>
+template<typename T, class P>
 class SoAValue {
 public:
-  SOA_HOST_DEVICE_INLINE SoAValue(size_t i, T * col): val_(col[i]) {}
-  SOA_HOST_DEVICE_INLINE operator T&() { return val_; }
-  SOA_HOST_DEVICE_INLINE operator const T&() const { return val_; }
-  SOA_HOST_DEVICE_INLINE T* operator& () { return &val_; }
-  SOA_HOST_DEVICE_INLINE const T* operator& () const { return &val_; }
+  SOA_HOST_DEVICE_INLINE SoAValue(size_t baseOffset, size_t index, P & parent):
+    baseOffset_(baseOffset), index_(index), parent_(parent) {}
+  SOA_HOST_DEVICE_INLINE operator T&() { return getRef(); }
+  SOA_HOST_DEVICE_INLINE operator const T&() const { return getRef(); }
+  SOA_HOST_DEVICE_INLINE T* operator& () { return &getRef(); }
+  SOA_HOST_DEVICE_INLINE const T* operator& () const { return &getRef(); }
   template <typename T2>
-  SOA_HOST_DEVICE_INLINE T& operator= (const T2& v) { return val_ = v; }
+  SOA_HOST_DEVICE_INLINE T& operator= (const T2& v) { return getRef() = v; }
   typedef T valueType;
   static constexpr auto valueSize = sizeof(T);
 private:
-  T &val_;
+  SOA_HOST_DEVICE_INLINE
+  T& getRef() {
+    return reinterpret_cast<T *>(&parent_.mem_[baseOffset_])[index_];
+  }
+  SOA_HOST_DEVICE_INLINE
+  const T& getRef() const {
+    return reinterpret_cast<const T *>(&parent_.mem_[baseOffset_])[index_];
+  }
+  size_t baseOffset_, index_;
+  P & parent_;
 };
 
 /* declare "scalars" (one value shared across the whole SoA) and "columns" (one value per element) */
@@ -100,11 +110,11 @@ private:
   BOOST_PP_EXPAND(_DECLARE_SOA_DUMP_INFO_IMPL TYPE_NAME)
 
 #define _ASSIGN_SOA_COLUMN_OR_SCALAR_IMPL(IS_COLUMN, TYPE, NAME)                                                                    \
-  BOOST_PP_CAT(NAME, _) = reinterpret_cast<TYPE *>(curMem);                                                                         \
+  BOOST_PP_CAT(NAME, BaseOffset_) = curOffset;                                                                                      \
     BOOST_PP_IIF(IS_COLUMN,                                                                                                         \
-    curMem += (((nElements_ * sizeof(TYPE) - 1) / byteAlignment_) + 1) * byteAlignment_;                                            \
+    curOffset += (((nElements_ * sizeof(TYPE) - 1) / byteAlignment_) + 1) * byteAlignment_;                                         \
   ,                                                                                                                                 \
-    curMem += (((sizeof(TYPE) - 1) / byteAlignment_) + 1) * byteAlignment_;                                                         \
+    curOffset += (((sizeof(TYPE) - 1) / byteAlignment_) + 1) * byteAlignment_;                                                      \
   )
 
 #define _ASSIGN_SOA_COLUMN_OR_SCALAR(R, DATA, TYPE_NAME)                                                                            \
@@ -134,7 +144,7 @@ private:
 /* declare AoS-like element value aregs for contructor; these should expand,for columns only */
 #define _DECLARE_ELEMENT_VALUE_ARG_IMPL(IS_COLUMN, TYPE, NAME)                                                                      \
   BOOST_PP_IIF(IS_COLUMN,  \
-    (TYPE *NAME)\
+    (size_t BOOST_PP_CAT (NAME, BaseOffset))\
   ,\
     BOOST_PP_EMPTY()\
   )
@@ -152,28 +162,37 @@ private:
 
 /* declare AoS-like element value members; these should expand,for columns only */
 /* We filter the value list beforehand to avoid having a comma inside a macro parameter */
-#define _DECLARE_ELEMENT_VALUE_MEMBER_IMPL(IS_COLUMN, TYPE, NAME)                                                                   \
-  SoAValue<TYPE> NAME;
+#define _DECLARE_ELEMENT_VALUE_MEMBER_IMPL(IS_COLUMN, TYPE, NAME, CLASS)                                                             \
+  SoAValue<TYPE, CLASS> NAME;
 
-#define _DECLARE_ELEMENT_VALUE_MEMBER(R, DATA, TYPE_NAME)                                                                           \
-  _DECLARE_ELEMENT_VALUE_MEMBER_IMPL TYPE_NAME
+#define _DECLARE_ELEMENT_VALUE_MEMBER(R, CLASS, TYPE_NAME)                                                                           \
+  BOOST_PP_EXPAND(_DECLARE_ELEMENT_VALUE_MEMBER_IMPL BOOST_PP_TUPLE_PUSH_BACK (TYPE_NAME, CLASS))
+
+#define _DECLARE_ELEMENT_VALUE_MEMBER_INITIALISATION_IMPL(IS_COLUMN, TYPE, NAME, INDEX, PARENT)                                      \
+  (NAME (BOOST_PP_CAT(NAME, BaseOffset), INDEX, PARENT))
 
 /* declare AoS-like element value args for contructor; these should expand,for columns only */
+/* This macro returns a tuple and with the other results of the iteration will be turned into a comma separated list */
+/* Format is: (<name> (<name>BaseOffset, index, parent)) */
+/* index and parent are provided as members of the DATA tuple */
+/* This macro creates single tuple out of TYPE_NAME and DATA and call its helper _IMPL macro */
 #define _DECLARE_ELEMENT_VALUE_MEMBER_INITIALISATION(R, DATA, TYPE_NAME)                                                            \
-  (BOOST_PP_TUPLE_ELEM(2, TYPE_NAME)(DATA, BOOST_PP_TUPLE_ELEM(2, TYPE_NAME)))
+  _DECLARE_ELEMENT_VALUE_MEMBER_INITIALISATION_IMPL                                                                                 \
+      BOOST_PP_SEQ_TO_TUPLE(BOOST_PP_TUPLE_TO_SEQ(TYPE_NAME) BOOST_PP_TUPLE_TO_SEQ(DATA))
 
 /* declare AoS-like element value args for contructor; these should expand,for columns only */
 #define _DECLARE_ELEMENT_CONSTR_CALL_IMPL(IS_COLUMN, TYPE, NAME)                                                                    \
-  (BOOST_PP_CAT(NAME, _))
+  (BOOST_PP_CAT(NAME, BaseOffset_))
 
 #define _DECLARE_ELEMENT_CONSTR_CALL(R, DATA, TYPE_NAME)                                                                            \
   BOOST_PP_EXPAND(_DECLARE_ELEMENT_CONSTR_CALL_IMPL TYPE_NAME)
 
 #define _DECLARE_SOA_ACCESSOR_IMPL(IS_COLUMN, TYPE, NAME)                                                                           \
+  SOA_HOST_DEVICE_INLINE                                                                                                            \
   BOOST_PP_IIF(IS_COLUMN,                                                                                                           \
-    SOA_HOST_DEVICE_INLINE TYPE* NAME() { return BOOST_PP_CAT(NAME, _); }                                                           \
+    TYPE* NAME() { return reinterpret_cast<TYPE *>(&mem_[BOOST_PP_CAT(NAME, BaseOffset_)]); }                                       \
   ,                                                                                                                                 \
-    SOA_HOST_DEVICE_INLINE TYPE& NAME() { return * BOOST_PP_CAT(NAME, _); }                                                         \
+    TYPE& NAME() { return reinterpret_cast<TYPE &>(mem_[BOOST_PP_CAT(NAME, BaseOffset_)]); }                                        \
   )
 
 #define _DECLARE_SOA_ACCESSOR(R, DATA, TYPE_NAME)                                                                                   \
@@ -182,9 +201,9 @@ private:
 #define _DECLARE_SOA_CONST_ACCESSOR_IMPL(IS_COLUMN, TYPE, NAME)                                                                     \
   SOA_HOST_DEVICE_INLINE                                                                                                            \
   BOOST_PP_IIF(IS_COLUMN,                                                                                                           \
-    TYPE const* NAME() const { return BOOST_PP_CAT(NAME, _); }                                                                      \
+    TYPE const* NAME() const { return reinterpret_cast<TYPE *>(&mem_[BOOST_PP_CAT(NAME, BaseOffset_)]); }                           \
   ,                                                                                                                                 \
-    TYPE const& NAME() const { return * BOOST_PP_CAT(NAME, _); }                                                                    \
+    TYPE const& NAME() const { return reinterpret_cast<TYPE &>(mem_[BOOST_PP_CAT(NAME, BaseOffset_)]); }                            \
   )
 
 #define _DECLARE_SOA_CONST_ACCESSOR(R, DATA, TYPE_NAME)                                                                             \
@@ -192,9 +211,9 @@ private:
 
 #define _DECLARE_SOA_DATA_MEMBER_IMPL(IS_COLUMN, TYPE, NAME)                                                                        \
   BOOST_PP_IIF(IS_COLUMN,                                                                                                           \
-    TYPE * BOOST_PP_CAT(NAME, _);                                                                                                   \
+    size_t BOOST_PP_CAT(NAME, BaseOffset_);                                                                                         \
   ,                                                                                                                                 \
-    TYPE * BOOST_PP_CAT(NAME, _);                                                                                                   \
+    size_t BOOST_PP_CAT(NAME, BaseOffset_);                                                                                         \
   )
 
 #define _DECLARE_SOA_DATA_MEMBER(R, DATA, TYPE_NAME)                                                                                \
@@ -211,6 +230,9 @@ private:
  */
 #define declare_SoA_template(CLASS, ...)                                                                                            \
 struct CLASS {                                                                                                                      \
+  /* Value class direct access */                                                                                                   \
+  template <typename T, class P>\
+  friend class SoAValue;                                                                                                            \
                                                                                                                                     \
   /* these could be moved to an external type trait to free up the symbol names */                                                  \
   using self_type = CLASS;                                                                                                          \
@@ -244,10 +266,10 @@ struct CLASS {                                                                  
   /* Constructor relying on user provided storage */                                                                                \
   CLASS(std::byte* mem, size_t nElements, size_t byteAlignment = defaultAlignment):                                                 \
       mem_(mem), nElements_(nElements), byteAlignment_(byteAlignment) {                                                             \
-    auto curMem = mem_;                                                                                                             \
+    size_t curOffset = 0;                                                                                                           \
     _ITERATE_ON_ALL(_ASSIGN_SOA_COLUMN_OR_SCALAR, ~, __VA_ARGS__)                                                                   \
     /* Sanity check: we should have reached the computed size; */                                                                   \
-    if(mem_ + computeDataSize(nElements_, byteAlignment_) != curMem)                                                                \
+    if(mem_ + computeDataSize(nElements_, byteAlignment_) != &mem[curOffset])                                                       \
       throw std::out_of_range("In " #CLASS "::" #CLASS ": unexpected end pointer.");                                                \
   }                                                                                                                                 \
                                                                                                                                     \
@@ -268,32 +290,32 @@ struct CLASS {                                                                  
                                                                                                                                     \
   struct element {                                                                                                                  \
     SOA_HOST_DEVICE_INLINE                                                                                                          \
-    element(size_t index,                                                                                                           \
+    element(size_t index, CLASS &parent,                                                                                            \
       /* Turn Boost PP */                                                                                                           \
-      _ITERATE_ON_VALUE_TYPE_COMMA(_DECLARE_ELEMENT_VALUE_ARG, index, _VALUE_TYPE_COLUMN, __VA_ARGS__)                              \
+      _ITERATE_ON_VALUE_TYPE_COMMA(_DECLARE_ELEMENT_VALUE_ARG, ~, _VALUE_TYPE_COLUMN, __VA_ARGS__)                                  \
     ):                                                                                                                              \
-      _ITERATE_ON_VALUE_TYPE_COMMA(_DECLARE_ELEMENT_VALUE_MEMBER_INITIALISATION, index, _VALUE_TYPE_COLUMN, __VA_ARGS__)            \
+      _ITERATE_ON_VALUE_TYPE_COMMA(_DECLARE_ELEMENT_VALUE_MEMBER_INITIALISATION, (index, parent), _VALUE_TYPE_COLUMN, __VA_ARGS__)  \
        {}                                                                                                                           \
     SOA_HOST_DEVICE_INLINE                                                                                                          \
     element& operator=(const element& other) {                                                                                      \
       _ITERATE_ON_VALUE_TYPE(_DECLARE_ELEMENT_VALUE_COPY, ~, _VALUE_TYPE_COLUMN, __VA_ARGS__)                                       \
       return *this;                                                                                                                 \
     }                                                                                                                               \
-    _ITERATE_ON_VALUE_TYPE(_DECLARE_ELEMENT_VALUE_MEMBER, ~, _VALUE_TYPE_COLUMN, __VA_ARGS__)                                       \
+    _ITERATE_ON_VALUE_TYPE(_DECLARE_ELEMENT_VALUE_MEMBER, CLASS, _VALUE_TYPE_COLUMN, __VA_ARGS__)                                   \
   };                                                                                                                                \
                                                                                                                                     \
   /* AoS-like accessor */                                                                                                           \
   SOA_HOST_DEVICE_INLINE                                                                                                            \
   element operator[](size_t index) {                                                                                                \
     rangeCheck(index);                                                                                                              \
-    return element(index,                                                                                                           \
+    return element(index, *this,                                                                                                    \
         _ITERATE_ON_VALUE_TYPE_COMMA(_DECLARE_ELEMENT_CONSTR_CALL, ~, _VALUE_TYPE_COLUMN, __VA_ARGS__) );                           \
   }                                                                                                                                 \
                                                                                                                                     \
   SOA_HOST_DEVICE_INLINE                                                                                                            \
   const element operator[](size_t index) const {                                                                                    \
     rangeCheck(index);                                                                                                              \
-    return element(index,                                                                                                           \
+    return element(index, *const_cast<CLASS *>(this),                                                                               \
         _ITERATE_ON_VALUE_TYPE_COMMA(_DECLARE_ELEMENT_CONSTR_CALL, ~, _VALUE_TYPE_COLUMN, __VA_ARGS__) );                           \
   }                                                                                                                                 \
                                                                                                                                     \
@@ -307,7 +329,7 @@ struct CLASS {                                                                  
 private:                                                                                                                            \
   /* Range checker conditional to the macro _DO_RANGECHECK */                                                                       \
   SOA_HOST_DEVICE_INLINE                                                                                                            \
-  void rangeCheck(size_t index) const {                                                                                      \
+  void rangeCheck(size_t index) const {                                                                                             \
     if constexpr (_DO_RANGECHECK) {                                                                                                 \
       if (index >= nElements_) {                                                                                                    \
         printf("In " #CLASS "::rangeCheck(): index out of range: %zu with nElements: %zu\n", index, nElements_);                    \

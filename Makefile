@@ -74,6 +74,7 @@ $(CUDA_EXECUTABLES): %: .tmp/%.cc.o .tmp/%.cu.o .tmp/cppunit_runner.cc.o Makefil
 
 .tmp/%.cu.i: %.cu Makefile
 	 @mkdir -p .tmp
-	$(NVCC) $(NVCCFLAGS) -E $<  | grep -v ^# | $(CLANG_FORMAT) > $@
+	$(NVCC) $(filter-out -MMD, $(NVCCFLAGS)) $(NVCC_CXXFLAGS) -E $<  | grep -v ^#  \
+	  | $(CLANG_FORMAT) --style="{ColumnLimit: 200}" > $@
 
 -include $(DEP)
