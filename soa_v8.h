@@ -29,7 +29,10 @@ public:
   SOA_HOST_DEVICE_INLINE SoAValue(size_t baseOffset, size_t index, P & parent):
     baseOffset_(baseOffset), index_(index), parent_(parent) {}
   SOA_HOST_DEVICE_INLINE operator T&() { return getRef(); }
-  SOA_HOST_DEVICE_INLINE operator const __restrict__ T&() const { return getRef(); }
+  SOA_HOST_DEVICE_INLINE operator const __restrict__ T&() const { 
+    const SoAValue<T, P>& cThis = *this;
+    return cThis.getRef(); 
+  }
   SOA_HOST_DEVICE_INLINE T* operator& () { return &getRef(); }
   SOA_HOST_DEVICE_INLINE const __restrict__ T* operator& () const { return &getRef(); }
   template <typename T2>
