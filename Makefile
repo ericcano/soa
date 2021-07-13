@@ -3,7 +3,11 @@ OBJ=$(SRC:%=.tmp/%.o)
 DEP=$(SRC:%=.tmp/%.d)
 TEST=test_v0 test_v1 test_v2 test_v3 test_v4 test_v5
 CPPUNIT_TEST=test_v5 test_v6
-CUDA_TEST=test_v7 test_v8
+CUDA_TEST=test_v7 test_v8 test_v9
+# Test v7: a variable size SoA implementation keeping track of columns via pointers
+# Test v8: same as v7, keeping track of columns via offsets.
+# Test v9: back to v7, adding support for Eigen types.
+
 
 # Can be overridden on the command line with CXX=/opt/rh/devtoolset-10/root/bin/g++
 # on Centos7 (with package devtools-10).
@@ -28,6 +32,8 @@ NVCC_CXXFLAGS=--compiler-options '$(filter-out -pedantic -MMD, $(CXXFLAGS))'
 
 NVCCARCH= -gencode arch=compute_60,code=[sm_60,compute_60] -gencode arch=compute_70,code=[sm_70,compute_70] -gencode arch=compute_75,code=[sm_75,compute_75]
 NVCCFLAGS=-std=c++17 -O3 --generate-line-info -MMD --restrict --compiler-bindir $(CXX)
+# Silent Eigen warnings.
+NVCCFLAGS+= -Xcudafe "--display_error_number --diag_suppress=177 --diag_suppress=20012 --diag_suppress=20013 --diag_suppress=20014 --diag_suppress=20015 " --compiler-bindir $(CXX)
 LDFLAGS=-lrt -lcppunit -lcuda -L$(LIBS)
 
 .PHONY: all clean distclean dump
