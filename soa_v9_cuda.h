@@ -9,12 +9,13 @@
 #include <type_traits>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <Eigen/Core>
 
 /* Test definitions */
 
 class testSoA: public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(testSoA);
-  //CPPUNIT_TEST(initialTest);
+  CPPUNIT_TEST(initialTest);
   CPPUNIT_TEST(checkAlignment);
   CPPUNIT_TEST(fill);
   CPPUNIT_TEST(randomFill);
@@ -44,6 +45,7 @@ public:
     SoA_column(double, x),
     SoA_column(double, y),
     SoA_column(double, z),
+    SoA_eigenColumn(Eigen::Vector3d, v),
     SoA_column(uint16_t, colour),
     SoA_column(int32_t, value),
     SoA_column(double *, py),
