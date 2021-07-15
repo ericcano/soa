@@ -150,7 +150,7 @@ namespace {
     if (i >= nElements) return;
     bool deviceConstructor = true;
     testSoA::SoA soa(deviceConstructor, data, nElements);
-#if 0
+#if 1
     soa[i].r() = soa[i].a().cross(soa[i].b());
 #else
     using V3 = Eigen::Vector3d;
