@@ -22,6 +22,7 @@ class testSoA: public CppUnit::TestFixture {
   CPPUNIT_TEST(crossProduct);
   CPPUNIT_TEST(randomCrossProduct);
   CPPUNIT_TEST(randomCrossProductEigen);
+  CPPUNIT_TEST(randomCrossProductEmbeddedVector);
   CPPUNIT_TEST_SUITE_END();
 
 /* SoA and AoS structures definitions */  
@@ -35,6 +36,7 @@ public:
   void crossProduct();
   void randomCrossProduct();
   void randomCrossProductEigen();
+  void randomCrossProductEmbeddedVector();
   
   declare_SoA_template(SoA,
     // predefined static scalars
@@ -45,7 +47,9 @@ public:
     SoA_column(double, x),
     SoA_column(double, y),
     SoA_column(double, z),
-    SoA_eigenColumn(Eigen::Vector3d, v),
+    SoA_eigenColumn(Eigen::Vector3d, a),
+    SoA_eigenColumn(Eigen::Vector3d, b),
+    SoA_eigenColumn(Eigen::Vector3d, r),
     SoA_column(uint16_t, colour),
     SoA_column(int32_t, value),
     SoA_column(double *, py),
@@ -59,6 +63,9 @@ public:
     double x;
     double y;
     double z;
+    Eigen::Vector3d a;
+    Eigen::Vector3d b;
+    Eigen::Vector3d r;
     uint16_t colour;
     int32_t value;
     double * py;

@@ -30,6 +30,25 @@ namespace {
     auto e = soa[i];
     fillElement(e, i);
   }
+  // A read only decorator adding x,y,z interface to Eigen vectors
+  /*template <class C>
+  class EigenXYZW {
+  public:
+    EigenXYZW(const C &v): x(v, &C::x()), y(v, &C::y()), z(v, &C::z()), w(v, &C::w())  {}
+    class Accessor {
+      friend EigenXYZW<C>;
+    public:
+      operator C::Scalar() const { return (v_.*m_)(); }
+    private:
+      Accessor(const C& v, C::Scalar (C::Type::*m)()): v_(v), m_(m) {}
+      const C & v_;
+      C::Scalar (C::Type::*m_)();
+    };
+    Accessor x;
+    Accessor y;
+    Accessor z;
+    Accessor w;
+  };*/
   
   // Fill elements with random data.
   [[maybe_unused]] __global__ void randomFillSoA(testSoA::SoA soa, uint64_t seed) {
@@ -40,6 +59,12 @@ namespace {
     soa[i].x = curand_uniform_double(&state);
     soa[i].y = curand_uniform_double(&state);
     soa[i].z = curand_uniform_double(&state);
+    soa[i].a()(0) = curand_uniform_double(&state);
+    soa[i].a()(1) = curand_uniform_double(&state);
+    soa[i].a()(2) = curand_uniform_double(&state);
+    soa[i].b()(0) = curand_uniform_double(&state);
+    soa[i].b()(1) = curand_uniform_double(&state);
+    soa[i].b()(2) = curand_uniform_double(&state);
   }
 
   [[maybe_unused]] __global__ void fillAoS(testSoA::AoSelement *aos, size_t nElements) {
@@ -47,7 +72,7 @@ namespace {
     if (i >= nElements) return;
     fillElement(aos[i], i);
   }
-
+  
   // Simple cross product for elements
   template <typename T, typename T2>
   [[maybe_unused]] __host__ __device__ __forceinline__ void crossProduct(T & r, const T2 & __restrict__ a, const T2 & __restrict__ b) {
@@ -99,6 +124,44 @@ namespace {
     CMapV3 mb(bx+i, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(stride));
     MapV3 mr(rx+i, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(stride));
     mr = ma.cross(mb);
+  }
+  
+  // Eigen based cross product on embedded vectors
+  [[maybe_unused]] __global__ void embeddedCrossProductSoA(testSoA::SoA soa) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= soa.nElements()) return;
+#if 0
+    soa[i].r() = soa[i].a().cross(soa[i].b());
+#else
+    using V3 = Eigen::Vector3d;
+    using DynStride = Eigen::InnerStride<Eigen::Dynamic>;
+    using CMapV3 =  Eigen::Map<const V3,0,  DynStride>;
+    const V3::Scalar * __restrict__ mad = soa[i].a().data();
+    const V3::Scalar * __restrict__ mbd = soa[i].b().data();
+    CMapV3 ma(mad, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(soa[i].a.stride()));
+    CMapV3 mb(mbd, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(soa[i].b.stride()));
+    soa[i].r() = ma.cross(mb);
+#endif
+  }
+
+   // Eigen based cross product on embedded vectors
+  [[maybe_unused]] __global__ void embeddedCrossProductLocalObjectSoA(std::byte * data, size_t nElements) {
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nElements) return;
+    bool deviceConstructor = true;
+    testSoA::SoA soa(deviceConstructor, data, nElements);
+#if 0
+    soa[i].r() = soa[i].a().cross(soa[i].b());
+#else
+    using V3 = Eigen::Vector3d;
+    using DynStride = Eigen::InnerStride<Eigen::Dynamic>;
+    using CMapV3 =  Eigen::Map<const V3,0,  DynStride>;
+    const V3::Scalar * __restrict__ mad = soa[i].a().data();
+    const V3::Scalar * __restrict__ mbd = soa[i].b().data();
+    CMapV3 ma(mad, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(soa[i].a.stride()));
+    CMapV3 mb(mbd, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(soa[i].b.stride()));
+    soa[i].r() = ma.cross(mb);
+#endif
   }
 
   // Simple cross product (SoA on CPU)
@@ -182,6 +245,29 @@ namespace {
     if (abs(myRes.x - resultSoA[i].x) > ref) { pass = false; return; }
     if (abs(myRes.y - resultSoA[i].y) > ref) { pass = false; return; }
     if (abs(myRes.z - resultSoA[i].z) > ref) { pass = false; return; }
+  }
+  
+  template <class T>
+  [[maybe_unused]] __host__ __device__ __forceinline__ void checkEmbeddedCrossProduct(T soa, size_t i, double epsilon, bool & pass) {
+    if (i >= soa.nElements() || !pass) return;
+    auto & a = soa[i].a();
+    auto & b = soa[i].b();
+    auto & r = soa[i].r();
+    auto refA = max (abs(a.x()), max(abs(a.y()), abs(a.z())));
+    auto refB = max (abs(b.x()), max(abs(b.y()), abs(b.z())));
+    auto ref = max(refA, refB);
+    ref *= ref * epsilon;
+    testSoA::AoSelement myRes, AoSa, AoSb;
+    AoSa.x = a.x();
+    AoSa.y = a.y();
+    AoSa.z = a.z();
+    AoSb.x = b.x();
+    AoSb.y = b.y();
+    AoSb.z = b.z();
+    crossProduct(myRes, AoSa, AoSb);
+    if (abs(myRes.x - r.x()) > ref) { pass = false; return; }
+    if (abs(myRes.y - r.y()) > ref) { pass = false; return; }
+    if (abs(myRes.z - r.z()) > ref) { pass = false; return; }
   }
 
   class StreamTimer {
@@ -395,6 +481,74 @@ void testSoA::randomCrossProduct() {
     std::cout << "B= (" << hostSoAB[i].x << ", " << hostSoAB[i].y << ", " << hostSoAB[i].z << ")" << std::endl;
   }
   std::cout << "indirectCrossProductSoA time=" << timer.mSecs() * 1000 << " us." << std::endl;
+  CPPUNIT_ASSERT(pass);
+}
+
+
+void testSoA::randomCrossProductEmbeddedVector() {
+  // Get device, stream, memory
+  cudaDeviceProp deviceProperties;
+  int deviceCount=0;
+  CUDA_UNIT_CHECK(cudaGetDeviceCount(&deviceCount));
+  CPPUNIT_ASSERT(deviceCount > 0);
+  CUDA_UNIT_CHECK(cudaGetDeviceProperties(&deviceProperties, defaultDevice));
+  cudaStream_t stream;
+  CUDA_UNIT_CHECK(cudaStreamCreate(&stream));
+  
+  // Allocate memory and populate SoA descriptors (device A as source and R as result of cross product)
+  auto deviceSoABlock = make_device_unique(SoA::computeDataSize(elementsCount));
+  auto hostSoABlock = make_host_unique(SoA::computeDataSize(elementsCount));
+  SoA deviceSoA(deviceSoABlock.get(), elementsCount);
+  SoA hostSoA(hostSoABlock.get(), elementsCount);
+ 
+  
+  // Timer to measure performance
+  ::StreamTimer timer, timer2;
+  // Call kernels, get result. Also fill up result SoA to ensure the results go in the right place.
+  randomFillSoA<<<(elementsCount - 1)/deviceProperties.warpSize + 1, deviceProperties.warpSize, 0, stream>>>(deviceSoA, 0xdeadbeef);
+  // Run more to gather statistics
+  timer.start(stream);
+  for (size_t i=0; i<20; ++i) {
+    embeddedCrossProductLocalObjectSoA<<<
+      (elementsCount - 1)/deviceProperties.warpSize + 1,
+      deviceProperties.warpSize,
+      0, stream
+    >>>(deviceSoABlock.get(), elementsCount);
+  }
+  timer.stop(stream);
+  timer2.start(stream);
+  for (size_t i=0; i<20; ++i) {
+    embeddedCrossProductSoA<<<
+      (elementsCount - 1)/deviceProperties.warpSize + 1,
+      deviceProperties.warpSize,
+      0, stream
+    >>>(deviceSoA);
+  }
+  timer2.stop(stream);
+  CUDA_UNIT_CHECK(cudaMemcpyAsync(hostSoABlock.get(), deviceSoABlock.get(), SoA::computeDataSize(hostSoA.nElements()), cudaMemcpyDeviceToHost, stream));
+  CUDA_UNIT_CHECK(cudaStreamSynchronize(stream));
+
+  // Validate result
+  bool pass = true;
+  size_t i = 0;
+  for (; pass && i< hostSoA.nElements(); i++) {
+    checkEmbeddedCrossProduct(hostSoA, i, std::numeric_limits<double>::epsilon(), pass);
+  }
+  if (!pass) {
+    // Recompute the expected result
+    Eigen::Vector3d expected;
+    auto a = hostSoA[i].a();
+    auto b = hostSoA[i].b();
+    auto r = hostSoA[i].r();
+    expected =  a.cross(b);
+    std::cout << "In " << __FUNCTION__ << " check failed at i= " << i << std::endl;
+    std::cout << "result= ("   << r.x() << ", " << r.y() << ", " << r.z() << ")" << std::endl;
+    std::cout << "expected= (" << expected.x() << ", " << expected.y() << ", " << expected.z() << ")" << std::endl;
+    std::cout << "A= (" << a.x() << ", " << a.y() << ", " << a.z() << ")" << std::endl;
+    std::cout << "B= (" << b.x() << ", " << b.y() << ", " << b.z() << ")" << std::endl;
+  }
+  std::cout << "embeddedCrossProductLocalObjectSoA time=" << timer.mSecs() * 1000 << " us." << std::endl;
+  std::cout << "embeddedCrossProductSoA time=" << timer2.mSecs() * 1000 << " us." << std::endl;
   CPPUNIT_ASSERT(pass);
 }
 

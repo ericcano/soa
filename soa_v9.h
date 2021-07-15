@@ -13,10 +13,12 @@
 // CUDA attributes
 #ifdef __CUDACC__
 #define SOA_HOST_ONLY __host__
+#define SOA_DEVICE_ONLY __device__
 #define SOA_HOST_DEVICE __host__ __device__
 #define SOA_HOST_DEVICE_INLINE __host__ __device__ __forceinline__
 #else
 #define SOA_HOST_ONLY
+#define SOA_DEVICE_ONLY
 #define SOA_HOST_DEVICE
 #define SOA_HOST_DEVICE_INLINE inline
 #endif
@@ -44,19 +46,32 @@ private:
 template<class C>
 class SoAEigenValue {
 public:
+  typedef C Type;
+  typedef Eigen::Map<C, 0, Eigen::InnerStride<Eigen::Dynamic>> MapType;
+  typedef Eigen::Map<const C, 0, Eigen::InnerStride<Eigen::Dynamic>> CMapType;
   SOA_HOST_DEVICE_INLINE SoAEigenValue(size_t i, typename C::Scalar * col, size_t stride): 
     val_(col + i, C::RowsAtCompileTime, C::ColsAtCompileTime,
-              Eigen::InnerStride<Eigen::Dynamic>(stride)) {}
+              Eigen::InnerStride<Eigen::Dynamic>(stride)),
+    crCol_(col),
+    cVal_(crCol_ + i, C::RowsAtCompileTime, C::ColsAtCompileTime,
+              Eigen::InnerStride<Eigen::Dynamic>(stride)),
+    stride_(stride) {}
+  SOA_HOST_DEVICE_INLINE MapType& operator() () { return val_; }
+  SOA_HOST_DEVICE_INLINE const CMapType& operator() () const { return cVal_; }
   SOA_HOST_DEVICE_INLINE operator C() { return val_; }
-  SOA_HOST_DEVICE_INLINE operator const C() const { return val_; }
+  SOA_HOST_DEVICE_INLINE operator const C() const { return cVal_; }
   SOA_HOST_DEVICE_INLINE C* operator& () { return &val_; }
-  SOA_HOST_DEVICE_INLINE const C* operator& () const { return &val_; }
+  SOA_HOST_DEVICE_INLINE const C* operator& () const { return &cVal_; }
   template <class C2>
   SOA_HOST_DEVICE_INLINE C& operator= (const C2& v) { return val_ = v; }
-  typedef typename C::Scalar valueType;
+  typedef typename C::Scalar ValueType;
   static constexpr auto valueSize = sizeof(C::Scalar);
+  SOA_HOST_DEVICE_INLINE size_t stride() { return stride_; }
 private:
-  Eigen::Map<C, 0, Eigen::InnerStride<Eigen::Dynamic>> val_;
+  MapType val_;
+  const typename C::Scalar * __restrict__ crCol_;
+  CMapType cVal_;
+  size_t stride_;
 };
 
 // Helper template to avoid commas in macro
@@ -210,7 +225,7 @@ struct EigenConstMapMaker {
     BOOST_PP_CAT(NAME, _) = reinterpret_cast<CPP_TYPE::Scalar *>(curMem);                                                           \
     curMem += (((nElements_ * sizeof(CPP_TYPE::Scalar) - 1) / byteAlignment_) + 1) * byteAlignment_                                 \
           * CPP_TYPE::RowsAtCompileTime * CPP_TYPE::ColsAtCompileTime;                                                              \
-    BOOST_PP_CAT(NAME, Stride_) = (((sizeof(CPP_TYPE::Scalar) - 1) / byteAlignment_) + 1)                                           \
+    BOOST_PP_CAT(NAME, Stride_) = (((nElements_ * sizeof(CPP_TYPE::Scalar) - 1) / byteAlignment_) + 1)                              \
           * byteAlignment_ / sizeof(CPP_TYPE::Scalar);                                                                              \
   )
 
@@ -425,13 +440,20 @@ struct CLASS {                                                                  
   SOA_HOST_DEVICE_INLINE size_t byteAlignment() const { return byteAlignment_; }                                                    \
                                                                                                                                     \
   /* Constructor relying on user provided storage */                                                                                \
-  CLASS(std::byte* mem, size_t nElements, size_t byteAlignment = defaultAlignment):                                                 \
+  SOA_HOST_ONLY CLASS(std::byte* mem, size_t nElements, size_t byteAlignment = defaultAlignment):                                   \
       mem_(mem), nElements_(nElements), byteAlignment_(byteAlignment) {                                                             \
     auto curMem = mem_;                                                                                                             \
     _ITERATE_ON_ALL(_ASSIGN_SOA_COLUMN_OR_SCALAR, ~, __VA_ARGS__)                                                                   \
-    /* Sanity check: we should have reached the computed size; */                                                                   \
+    /* Sanity check: we should have reached the computed size, only on host code */                                                 \
     if(mem_ + computeDataSize(nElements_, byteAlignment_) != curMem)                                                                \
       throw std::out_of_range("In " #CLASS "::" #CLASS ": unexpected end pointer.");                                                \
+  }                                                                                                                                 \
+                                                                                                                                    \
+  /* Constructor relying on user provided storage */                                                                                \
+  SOA_DEVICE_ONLY CLASS(bool devConstructor, std::byte* mem, size_t nElements, size_t byteAlignment = defaultAlignment):            \
+      mem_(mem), nElements_(nElements), byteAlignment_(byteAlignment) {                                                             \
+    auto curMem = mem_;                                                                                                             \
+    _ITERATE_ON_ALL(_ASSIGN_SOA_COLUMN_OR_SCALAR, ~, __VA_ARGS__)                                                                   \
   }                                                                                                                                 \
                                                                                                                                     \
   /* AoS-like accessor to individual elements */                                                                                    \
