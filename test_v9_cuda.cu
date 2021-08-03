@@ -140,7 +140,7 @@ namespace {
     const V3::Scalar * __restrict__ mbd = soa[i].b().data();
     CMapV3 ma(mad, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(soa[i].a.stride()));
     CMapV3 mb(mbd, V3::RowsAtCompileTime, V3::ColsAtCompileTime, DynStride(soa[i].b.stride()));
-    soa[i].r() = ma.cross(mb);
+    soa[i].r = ma.cross(mb);
 #endif
   }
 
@@ -151,7 +151,7 @@ namespace {
     bool deviceConstructor = true;
     testSoA::SoA soa(deviceConstructor, data, nElements);
 #if 1
-    soa[i].r() = soa[i].a().cross(soa[i].b());
+    soa[i].r() = soa[i].a.cross(soa[i].b);
 #else
     using V3 = Eigen::Vector3d;
     using DynStride = Eigen::InnerStride<Eigen::Dynamic>;

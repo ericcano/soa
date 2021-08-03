@@ -63,10 +63,18 @@ public:
   SOA_HOST_DEVICE_INLINE C* operator& () { return &val_; }
   SOA_HOST_DEVICE_INLINE const C* operator& () const { return &cVal_; }
   template <class C2>
-  SOA_HOST_DEVICE_INLINE C& operator= (const C2& v) { return val_ = v; }
+  SOA_HOST_DEVICE_INLINE MapType& operator= (const C2& v) { return val_ = v; }
   typedef typename C::Scalar ValueType;
   static constexpr auto valueSize = sizeof(C::Scalar);
   SOA_HOST_DEVICE_INLINE size_t stride() { return stride_; }
+  template<typename OtherDerived>
+  typename Eigen::MatrixBase<C>::template cross_product_return_type<OtherDerived>::type
+  SOA_HOST_DEVICE_INLINE cross(const Eigen::MatrixBase<OtherDerived>& other) const { return cVal_.cross(other); }
+  
+  template<typename OtherType>
+  typename Eigen::MatrixBase<C>::template cross_product_return_type<typename OtherType::MapType>::type
+  SOA_HOST_DEVICE_INLINE cross(const OtherType& other) const { return cVal_.cross(other.cVal_); }
+  
 private:
   MapType val_;
   const typename C::Scalar * __restrict__ crCol_;
