@@ -3,7 +3,7 @@ OBJ=$(SRC:%=.tmp/%.o)
 DEP=$(SRC:%=.tmp/%.d)
 TEST=test_v0 test_v1 test_v2 test_v3 test_v4 test_v5
 CPPUNIT_TEST=test_v5 test_v6
-CUDA_TEST=test_v7 test_v8 test_v9
+CUDA_TEST=test_v7 test_v8 test_v9 test_v10
 # Test v7: a variable size SoA implementation keeping track of columns via pointers
 # Test v8: same as v7, keeping track of columns via offsets.
 # Test v9: back to v7, adding support for Eigen types.
