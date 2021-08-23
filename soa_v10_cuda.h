@@ -53,9 +53,12 @@ public:
     SoA_column(uint16_t, colour),
     SoA_column(int32_t, value),
     SoA_column(double *, py),
+    SoA_FundamentalTypeColumn(uint32_t, count),
+    SoA_FundamentalTypeColumn(uint32_t, anotherCount),
 
     // scalars: one value for the whole structure
-    SoA_scalar(const char *, description)
+    SoA_scalar(const char *, description),
+    SoA_scalar(uint32_t, someNumber)
   );
   
   // declare equivalent struct

@@ -105,42 +105,12 @@ struct EigenConstMapMaker {
 #define _VALUE_TYPE_SCALAR 0
 #define _VALUE_TYPE_COLUMN 1
 #define _VALUE_TYPE_EIGEN_COLUMN 2
+#define _VALUE_TYPE_FUNDAMENTAL_COLUMN 3
 
 #define SoA_scalar(TYPE, NAME) (_VALUE_TYPE_SCALAR, TYPE, NAME)
 #define SoA_column(TYPE, NAME) (_VALUE_TYPE_COLUMN, TYPE, NAME)
 #define SoA_eigenColumn(TYPE, NAME) (_VALUE_TYPE_EIGEN_COLUMN, TYPE, NAME)
-
-/* General helper macros for iterating on various types of members differently */
-/* Predicate for Boost PP filters. ELEMENT is expected to be SoA_scalar or SoA_column */
-#define _IS_VALUE_TYPE_PREDICATE(S, DATA, ELEM)                                                                                     \
-  BOOST_PP_EQUAL(BOOST_PP_TUPLE_ELEM(0, ELEM), DATA)
-
-#define _IS_COLUMN_PREDICATE(S, DATA, ELEM)                                                                                         \
-  BOOST_PP_NOT_EQUAL(BOOST_PP_TUPLE_ELEM(0, ELEM), _VALUE_TYPE_SCALAR)
-
-/* Iterate on the macro MACRO chosen type of elements */
-#define _ITERATE_ON_VALUE_TYPE(MACRO, DATA, VALUE_TYPE, ...)                                                                        \
-  BOOST_PP_SEQ_FOR_EACH(MACRO, DATA,                                                                                                \
-    BOOST_PP_SEQ_FILTER(_IS_VALUE_TYPE_PREDICATE, VALUE_TYPE,                                                                       \
-      BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)                                                                                         \
-    )                                                                                                                               \
-  )
-
-/* Count the elements matching a type */
-#define _COUNT_VALUE_TYPE(VALUE_TYPE, ...)                                                                                          \
-  BOOST_PP_SEQ_SIZE(                                                                                                                \
-    BOOST_PP_SEQ_FILTER(_IS_VALUE_TYPE_PREDICATE, VALUE_TYPE,                                                                       \
-      BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)                                                                                         \
-    )                                                                                                                               \
-  )
-
-/* Iterate on column types */
-#define _ITERATE_ON_COLUMN_TYPES(MACRO, DATA, ...)                                                                                  \
-  BOOST_PP_SEQ_FOR_EACH(MACRO, DATA,                                                                                                \
-     BOOST_PP_SEQ_FILTER(_IS_COLUMN_PREDICATE, VALUE_TYPE,                                                                          \
-      BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)                                                                                         \
-    )                                                                                                                               \
-  )
+#define SoA_FundamentalTypeColumn(TYPE, NAME) (_VALUE_TYPE_FUNDAMENTAL_COLUMN, TYPE, NAME)
 
 /* Iterate on the macro MACRO and return the result as a comma separated list */
 #define _ITERATE_ON_ALL_COMMA(MACRO, DATA, ...)                                                                                     \
@@ -149,15 +119,6 @@ struct EigenConstMapMaker {
       _ITERATE_ON_ALL(MACRO, DATA, __VA_ARGS__)                                                                                     \
     )                                                                                                                               \
   )
-
-/* Iterate on the macro MACRO chosen type of elements and return the result as a comma separated list */
-#define _ITERATE_ON_VALUE_TYPE_COMMA(MACRO, DATA, VALUE_TYPE, ...)                                                                  \
-  BOOST_PP_TUPLE_ENUM(                                                                                                              \
-    BOOST_PP_SEQ_TO_TUPLE(                                                                                                          \
-      _ITERATE_ON_VALUE_TYPE(MACRO, DATA, VALUE_TYPE, __VA_ARGS__)                                                                  \
-    )                                                                                                                               \
-  )
-
 /* Iterate MACRO on all elements */
 #define _ITERATE_ON_ALL(MACRO, DATA, ...)                                                                                           \
   BOOST_PP_SEQ_FOR_EACH(MACRO, DATA,                                                                                                \
@@ -165,19 +126,23 @@ struct EigenConstMapMaker {
   )
 
 /* Switch on macros depending on scalar / column type */
-#define _SWITCH_ON_TYPE(VALUE_TYPE, IF_SCALAR, IF_COLUMN, IF_EIGEN_COLUMN)                                                          \
+#define _SWITCH_ON_TYPE(VALUE_TYPE, IF_SCALAR, IF_COLUMN, IF_EIGEN_COLUMN, IF_FUNDAMENTAL_COLUMN)                                   \
   BOOST_PP_IF(BOOST_PP_EQUAL(VALUE_TYPE, _VALUE_TYPE_SCALAR),                                                                       \
     IF_SCALAR,                                                                                                                      \
     BOOST_PP_IF(BOOST_PP_EQUAL(VALUE_TYPE, _VALUE_TYPE_COLUMN),                                                                     \
       IF_COLUMN,                                                                                                                    \
       BOOST_PP_IF(BOOST_PP_EQUAL(VALUE_TYPE, _VALUE_TYPE_EIGEN_COLUMN),                                                             \
         IF_EIGEN_COLUMN,                                                                                                            \
-        BOOST_PP_EMPTY()                                                                                                            \
+        BOOST_PP_IF(BOOST_PP_EQUAL(VALUE_TYPE, _VALUE_TYPE_FUNDAMENTAL_COLUMN),                                                           \
+          IF_FUNDAMENTAL_COLUMN,                                                                                                    \
+          BOOST_PP_EMPTY()                                                                                                          \
+        )                                                                                                                           \
       )                                                                                                                             \
     )                                                                                                                               \
   )
 
 /* dump SoA fields information; these should expand to, for columns:
+ * XXX: change to sample output.
  *
  *   std::cout << "  x_[" << SoA::size << "] at " 
  *             << offsetof(SoA, SoA::x_) << " has size " << sizeof(SoA::x_) << std::endl;
@@ -214,11 +179,21 @@ struct EigenConstMapMaker {
               <<  std::endl;                                                                                                        \
     offset+=(((nElements * sizeof(CPP_TYPE::Scalar) - 1) / byteAlignment) + 1) * byteAlignment                                      \
               * CPP_TYPE::RowsAtCompileTime * CPP_TYPE::ColsAtCompileTime;                                                          \
+  ,                                                                                                                                 \
+    /* Dump fundamental type column */                                                                                              \
+    std::cout << " Column " BOOST_PP_STRINGIZE(NAME) "_ at offset " << offset                                                       \
+              <<  " has size " << sizeof(CPP_TYPE) * nElements << " and padding "                                                   \
+              << (((nElements * sizeof(CPP_TYPE) - 1) / byteAlignment) + 1) * byteAlignment - (sizeof(CPP_TYPE) * nElements)        \
+              <<  std::endl;                                                                                                        \
+    offset+=(((nElements * sizeof(CPP_TYPE) - 1) / byteAlignment) + 1) * byteAlignment;                                             \
 )
 
 #define _DECLARE_SOA_DUMP_INFO(R, DATA, TYPE_NAME)                                                                                  \
   BOOST_PP_EXPAND(_DECLARE_SOA_DUMP_INFO_IMPL TYPE_NAME)
 
+/**
+ * Computation of the column or scalar pointer location in the memory layout (at SoA construction time)
+ */
 #define _ASSIGN_SOA_COLUMN_OR_SCALAR_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                               \
   _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
     /* Scalar */                                                                                                                    \
@@ -235,11 +210,18 @@ struct EigenConstMapMaker {
           * CPP_TYPE::RowsAtCompileTime * CPP_TYPE::ColsAtCompileTime;                                                              \
     BOOST_PP_CAT(NAME, Stride_) = (((nElements_ * sizeof(CPP_TYPE::Scalar) - 1) / byteAlignment_) + 1)                              \
           * byteAlignment_ / sizeof(CPP_TYPE::Scalar);                                                                              \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    BOOST_PP_CAT(NAME, _) = reinterpret_cast<CPP_TYPE *>(curMem);                                                                   \
+    curMem += (((nElements_ * sizeof(CPP_TYPE) - 1) / byteAlignment_) + 1) * byteAlignment_;                                        \
   )
 
 #define _ASSIGN_SOA_COLUMN_OR_SCALAR(R, DATA, TYPE_NAME)                                                                            \
   _ASSIGN_SOA_COLUMN_OR_SCALAR_IMPL TYPE_NAME
 
+/**
+ * Computation of the column or scalar size for SoA size computation
+ */
 #define _ACCUMULATE_SOA_ELEMENT_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                                    \
   _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
     /* Scalar */                                                                                                                    \
@@ -251,11 +233,17 @@ struct EigenConstMapMaker {
     /* Eigen column */                                                                                                              \
     ret += (((nElements * sizeof(CPP_TYPE::Scalar) - 1) / byteAlignment) + 1) * byteAlignment                                       \
           * CPP_TYPE::RowsAtCompileTime * CPP_TYPE::ColsAtCompileTime;                                                              \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    ret += (((nElements * sizeof(CPP_TYPE) - 1) / byteAlignment) + 1) * byteAlignment;                                              \
   )
 
 #define _ACCUMULATE_SOA_ELEMENT(R, DATA, TYPE_NAME)                                                                                 \
   _ACCUMULATE_SOA_ELEMENT_IMPL TYPE_NAME
 
+/**
+ * Value accessor of the const_element subclass.
+ */
 #define _DECLARE_SOA_CONST_ELEMENT_ACCESSOR_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                        \
   SOA_HOST_DEVICE_INLINE                                                                                                            \
   _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
@@ -270,12 +258,17 @@ struct EigenConstMapMaker {
     EigenConstMapMaker<CPP_TYPE>::Type const NAME() {                                                                               \
       return EigenConstMapMaker<CPP_TYPE>::withData(soa_. NAME () + index_).withStride(soa_.BOOST_PP_CAT(NAME, Stride)());          \
     }                                                                                                                               \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    CPP_TYPE const & NAME() { return * (soa_. NAME () + index_ + 0 + 0); }                                                          \
   )
 
 #define _DECLARE_SOA_CONST_ELEMENT_ACCESSOR(R, DATA, TYPE_NAME)                                                                     \
   _DECLARE_SOA_CONST_ELEMENT_ACCESSOR_IMPL TYPE_NAME
 
-/* declare AoS-like element value aregs for contructor; these should expand,for columns only */
+/**
+ * Generator of parameters for (non-const) element subclass (expanded comma separated).
+ */
 #define _DECLARE_ELEMENT_VALUE_ARG_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                                 \
   _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
     /* Scalar */                                                                                                                    \
@@ -286,46 +279,17 @@ struct EigenConstMapMaker {
   ,                                                                                                                                 \
     /* Eigen column */                                                                                                              \
     (CPP_TYPE::Scalar *NAME) (size_t BOOST_PP_CAT(NAME, Stride))                                                                    \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    (CPP_TYPE &NAME)                                                                                                                \
   )
 
 #define _DECLARE_ELEMENT_VALUE_ARG(R, DATA, TYPE_NAME)                                                                              \
   _DECLARE_ELEMENT_VALUE_ARG_IMPL TYPE_NAME
 
-/* declare AoS-like element value members; these should expand,for columns only */
-/* We filter the value list beforehand to avoid having a comma inside a macro parameter */
-#define _DECLARE_ELEMENT_VALUE_COPY_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                                \
-  _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
-    /* Scalar */                                                                                                                    \
-    BOOST_PP_EMPTY()                                                                                                                \
-  ,                                                                                                                                 \
-    /* Column */                                                                                                                    \
-    static_cast<CPP_TYPE &>(NAME) = static_cast<std::add_const<CPP_TYPE>::type &>(other.NAME);                                      \
-  ,                                                                                                                                 \
-    /* Eigen column */                                                                                                              \
-    static_cast<CPP_TYPE>(NAME) = static_cast<std::add_const<CPP_TYPE>::type &>(other.NAME);                            \
-  )
-
-#define _DECLARE_ELEMENT_VALUE_COPY(R, DATA, TYPE_NAME)                                                                             \
-  BOOST_PP_EXPAND(_DECLARE_ELEMENT_VALUE_COPY_IMPL TYPE_NAME)
-
-/* declare AoS-like element value members; these should expand,for columns only */
-/* We filter the value list beforehand to avoid having a comma inside a macro parameter */
-#define _DECLARE_ELEMENT_VALUE_MEMBER_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                              \
-  _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
-    /* Scalar */                                                                                                                    \
-    BOOST_PP_EMPTY()                                                                                                                \
-  ,                                                                                                                                 \
-    /* Column */                                                                                                                    \
-    SoAValue<CPP_TYPE> NAME;                                                                                                        \
-  ,                                                                                                                                 \
-    /* Eigen column */                                                                                                              \
-    SoAEigenValue<CPP_TYPE> NAME;                                                                                                   \
-  )
-    
-
-#define _DECLARE_ELEMENT_VALUE_MEMBER(R, DATA, TYPE_NAME)                                                                           \
-  _DECLARE_ELEMENT_VALUE_MEMBER_IMPL TYPE_NAME
-
+/**
+ * Generator of member initialization for constructor of element subclass
+ */
 #define _DECLARE_ELEMENT_VALUE_MEMBER_INITIALISATION_IMPL(VALUE_TYPE, CPP_TYPE, NAME, DATA)                                         \
   _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
     /* Scalar */                                                                                                                    \
@@ -336,13 +300,61 @@ struct EigenConstMapMaker {
   ,                                                                                                                                 \
     /* Eigen column */                                                                                                              \
     (NAME (DATA, NAME, BOOST_PP_CAT(NAME, Stride)))                                                                                 \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    (NAME (NAME))                                                                                                                   \
   )
 
 /* declare AoS-like element value args for contructor; these should expand,for columns only */
 #define _DECLARE_ELEMENT_VALUE_MEMBER_INITIALISATION(R, DATA, TYPE_NAME)                                                            \
   BOOST_PP_EXPAND(_DECLARE_ELEMENT_VALUE_MEMBER_INITIALISATION_IMPL BOOST_PP_TUPLE_PUSH_BACK(TYPE_NAME, DATA))
 
-/* declare AoS-like element value args for contructor; these should expand,for columns only */
+/**
+ * Generator of the member-by-member copy operator of the element subclass.
+ */
+#define _DECLARE_ELEMENT_VALUE_COPY_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                                \
+  _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
+    /* Scalar */                                                                                                                    \
+    BOOST_PP_EMPTY()                                                                                                                \
+  ,                                                                                                                                 \
+    /* Column */                                                                                                                    \
+    static_cast<CPP_TYPE &>(NAME) = static_cast<std::add_const<CPP_TYPE>::type &>(other.NAME);                                      \
+  ,                                                                                                                                 \
+    /* Eigen column */                                                                                                              \
+    static_cast<CPP_TYPE>(NAME) = static_cast<std::add_const<CPP_TYPE>::type &>(other.NAME);                                        \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    NAME = static_cast<std::add_const<CPP_TYPE>::type &>(other.NAME);                                                               \
+  )
+
+#define _DECLARE_ELEMENT_VALUE_COPY(R, DATA, TYPE_NAME)                                                                             \
+  BOOST_PP_EXPAND(_DECLARE_ELEMENT_VALUE_COPY_IMPL TYPE_NAME)
+
+/**
+ * Declaration of the members of the element subclass
+ */
+#define _DECLARE_ELEMENT_VALUE_MEMBER_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                              \
+  _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
+    /* Scalar */                                                                                                                    \
+    BOOST_PP_EMPTY()                                                                                                                \
+  ,                                                                                                                                 \
+    /* Column */                                                                                                                    \
+    SoAValue<CPP_TYPE> NAME;                                                                                                        \
+  ,                                                                                                                                 \
+    /* Eigen column */                                                                                                              \
+    SoAEigenValue<CPP_TYPE> NAME;                                                                                                   \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    CPP_TYPE & NAME;                                                                                                                \
+  )
+    
+
+#define _DECLARE_ELEMENT_VALUE_MEMBER(R, DATA, TYPE_NAME)                                                                           \
+  _DECLARE_ELEMENT_VALUE_MEMBER_IMPL TYPE_NAME
+
+/**
+ * Parameters passed to element subclass constructor in operator[]
+ */
 #define _DECLARE_ELEMENT_CONSTR_CALL_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                               \
   _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
     /* Scalar */                                                                                                                    \
@@ -353,11 +365,17 @@ struct EigenConstMapMaker {
   ,                                                                                                                                 \
     /* Eigen column */                                                                                                              \
     (BOOST_PP_CAT(NAME, _)) (BOOST_PP_CAT(NAME, Stride_))                                                                           \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    (BOOST_PP_CAT(NAME, _[index]))                                                                                                  \
   )
 
 #define _DECLARE_ELEMENT_CONSTR_CALL(R, DATA, TYPE_NAME)                                                                            \
   BOOST_PP_EXPAND(_DECLARE_ELEMENT_CONSTR_CALL_IMPL TYPE_NAME)
 
+/**
+ * Direct access to column pointer.
+ */
 #define _DECLARE_SOA_ACCESSOR_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                                      \
   _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
     /* Scalar */                                                                                                                    \
@@ -369,11 +387,17 @@ struct EigenConstMapMaker {
     /* Eigen column */                                                                                                              \
     /* Unsupported for the moment TODO */                                                                                           \
     BOOST_PP_EMPTY()                                                                                                                \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    SOA_HOST_DEVICE_INLINE CPP_TYPE* NAME() { return BOOST_PP_CAT(NAME, _); }                                                       \
   )
 
 #define _DECLARE_SOA_ACCESSOR(R, DATA, TYPE_NAME)                                                                                   \
   BOOST_PP_EXPAND(_DECLARE_SOA_ACCESSOR_IMPL TYPE_NAME)
 
+/**
+ * Direct access to column pointer (const).
+ */
 #define _DECLARE_SOA_CONST_ACCESSOR_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                                \
   _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
     /* Scalar */                                                                                                                    \
@@ -385,11 +409,17 @@ struct EigenConstMapMaker {
     /* Eigen column */                                                                                                              \
     SOA_HOST_DEVICE_INLINE CPP_TYPE::Scalar const* NAME() const { return BOOST_PP_CAT(NAME, _); }                                   \
     SOA_HOST_DEVICE_INLINE size_t BOOST_PP_CAT(NAME,Stride)() const { return BOOST_PP_CAT(NAME, Stride_); }                         \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    SOA_HOST_DEVICE_INLINE CPP_TYPE const* NAME() const { return BOOST_PP_CAT(NAME, _); }                                           \
   )
 
 #define _DECLARE_SOA_CONST_ACCESSOR(R, DATA, TYPE_NAME)                                                                             \
   BOOST_PP_EXPAND(_DECLARE_SOA_CONST_ACCESSOR_IMPL TYPE_NAME)
 
+/**
+ * SoA class member declaration (column pointers).
+ */
 #define _DECLARE_SOA_DATA_MEMBER_IMPL(VALUE_TYPE, CPP_TYPE, NAME)                                                                   \
   _SWITCH_ON_TYPE(VALUE_TYPE,                                                                                                       \
     /* Scalar */                                                                                                                    \
@@ -401,6 +431,9 @@ struct EigenConstMapMaker {
     /* Eigen column */                                                                                                              \
     CPP_TYPE::Scalar * BOOST_PP_CAT(NAME, _);                                                                                       \
     size_t BOOST_PP_CAT(NAME, Stride_);                                                                                             \
+  ,                                                                                                                                 \
+    /* Fundamental type column */                                                                                                   \
+    CPP_TYPE * BOOST_PP_CAT(NAME, _);                                                                                               \
   )
 
 #define _DECLARE_SOA_DATA_MEMBER(R, DATA, TYPE_NAME)                                                                                \
