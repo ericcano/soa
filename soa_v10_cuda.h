@@ -44,9 +44,9 @@ public:
     // size_t alignment;
 
     // columns: one value per element
-    SoA_column(double, x),
-    SoA_column(double, y),
-    SoA_column(double, z),
+    SoA_FundamentalTypeColumn(double, x),
+    SoA_FundamentalTypeColumn(double, y),
+    SoA_FundamentalTypeColumn(double, z),
     SoA_eigenColumn(Eigen::Vector3d, a),
     SoA_eigenColumn(Eigen::Vector3d, b),
     SoA_eigenColumn(Eigen::Vector3d, r),
@@ -108,6 +108,38 @@ private:
         CPPUNIT_FAIL(err.str());
       }
     }
+  }
+  
+  // Helper macro to check alignement of reference-like members
+#define CHECK_REFERENCED_VALUE_ALIGNMENT(SOA, MEMBER, BYTE_ALIGMENT)                                                                \
+  {                                                                                                                                 \
+    for (size_t i=0; i<SOA.nElements(); i++) {                                                                                      \
+      /* Check that each value is aligned */                                                                                        \
+      if (reinterpret_cast<std::uintptr_t>(&(SOA[i].MEMBER)) % byteAlignment                                                        \
+              != (i *sizeof(decltype(SOA[i].MEMBER))) %byteAlignment ) {                                                            \
+        std::stringstream err;                                                                                                      \
+        err << "Misaligned value: " <<  BOOST_PP_STRINGIZE(MEMBER) << " at index=" << i                                             \
+                << " address=" << &(soa[i].MEMBER) << " byteAlignment=" << byteAlignment                                            \
+                << " address lower part: " << reinterpret_cast<std::uintptr_t>(&(SOA[i].MEMBER)) % byteAlignment                    \
+                << " expected address lower part: " << ((i * sizeof(decltype(SOA[i].MEMBER))) % byteAlignment)                      \
+                << " size=" << SOA.nElements() << " align=" << SOA.byteAlignment();                                                 \
+        CPPUNIT_FAIL(err.str());                                                                                                    \
+      }                                                                                                                             \
+      /* Check that all values except the first-in rows (address 0 modulo alignment)                                                \
+         are contiguous to their predecessors in memory (this will detect cutting                                                   \
+         memory/cache/etc... lines in unexpected places (for blocked SoA like AoSoA)*/                                              \
+      if ((reinterpret_cast<std::uintptr_t>(&(SOA[i].MEMBER)) % byteAlignment)                                                      \
+           && (reinterpret_cast<std::uintptr_t>(&(SOA[i - 1].MEMBER)) + sizeof(decltype(SOA[i].MEMBER))                             \
+                != reinterpret_cast<std::uintptr_t>(&(SOA[i].MEMBER)))) {                                                           \
+        std::stringstream err;                                                                                                      \
+        err << "Unexpected non-contiguity: " <<  BOOST_PP_STRINGIZE(MEMBER) << " at index=" << i                                    \
+                << " address=" << &(SOA[i].MEMBER) << " is not contiguous to "                                                      \
+                << BOOST_PP_STRINGIZE(MEMBER) << " at index=" << i - 1 << "address=" << &(SOA[i - 1].MEMBER)                        \
+                << " size=" << SOA.nElements() << " align=" << SOA.byteAlignment()                                                  \
+                << " valueSize=" << sizeof(decltype(SOA[i].MEMBER));                                                                \
+        CPPUNIT_FAIL(err.str());                                                                                                    \
+      }                                                                                                                             \
+    }                                                                                                                               \
   }
   
   void checkSoAAlignment(size_t nElements, size_t byteAlignment);

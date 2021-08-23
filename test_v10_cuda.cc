@@ -68,9 +68,9 @@ void testSoA::initialTest() {
 void testSoA::checkSoAAlignment(size_t nElements, size_t byteAlignment) {
   auto soaBlock = make_aligned_unique(SoA::computeDataSize(nElements,byteAlignment), byteAlignment);
   SoA soa(soaBlock.get(), nElements, byteAlignment);
-  checkValuesAlignment(soa, &SoA::element::x, "x", byteAlignment);
-  checkValuesAlignment(soa, &SoA::element::y, "y", byteAlignment);
-  checkValuesAlignment(soa, &SoA::element::z, "z", byteAlignment);
+  CHECK_REFERENCED_VALUE_ALIGNMENT(soa, x, byteAlignment);
+  CHECK_REFERENCED_VALUE_ALIGNMENT(soa, y, byteAlignment);
+  CHECK_REFERENCED_VALUE_ALIGNMENT(soa, z, byteAlignment);
   checkValuesAlignment(soa, &SoA::element::colour, "colour", byteAlignment);
   checkValuesAlignment(soa, &SoA::element::value, "value", byteAlignment);
   checkValuesAlignment(soa, &SoA::element::py, "py", byteAlignment);

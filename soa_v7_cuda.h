@@ -139,4 +139,3 @@ private:
 };
 
 /* SoA and AoS structures definitions */
-
