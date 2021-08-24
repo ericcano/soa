@@ -142,15 +142,47 @@ struct EigenConstMapMaker {
   )
 
 /* dump SoA fields information; these should expand to, for columns:
- * XXX: change to sample output.
+ * Example:
+ * declare_SoA_template(SoA,
+ *   // predefined static scalars
+ *   // size_t size;
+ *   // size_t alignment;
  *
- *   std::cout << "  x_[" << SoA::size << "] at " 
- *             << offsetof(SoA, SoA::x_) << " has size " << sizeof(SoA::x_) << std::endl;
+ *   // columns: one value per element
+ *   SoA_FundamentalTypeColumn(double, x),
+ *   SoA_FundamentalTypeColumn(double, y),
+ *   SoA_FundamentalTypeColumn(double, z),
+ *   SoA_eigenColumn(Eigen::Vector3d, a),
+ *   SoA_eigenColumn(Eigen::Vector3d, b),
+ *   SoA_eigenColumn(Eigen::Vector3d, r),
+ *   SoA_column(uint16_t, colour),
+ *   SoA_column(int32_t, value),
+ *   SoA_column(double *, py),
+ *   SoA_FundamentalTypeColumn(uint32_t, count),
+ *   SoA_FundamentalTypeColumn(uint32_t, anotherCount),
  *
- * and for scalars:
- *
- *   std::cout << "  x_ at " 
- *             << offsetof(SoA, SoA::x_) << " has size " << sizeof(SoA::x_) << std::endl;
+ *   // scalars: one value for the whole structure
+ *   SoA_scalar(const char *, description),
+ *   SoA_scalar(uint32_t, someNumber)
+ * );
+ * 
+ * dumps as:
+ * SoA(32, 64):
+ *   sizeof(SoA): 152
+ *  Column x_ at offset 0 has size 256 and padding 0
+ *  Column y_ at offset 256 has size 256 and padding 0
+ *  Column z_ at offset 512 has size 256 and padding 0
+ *  Eigen value a_ at offset 768 has dimension (3 x 1) and per column size 256 and padding 0
+ *  Eigen value b_ at offset 1536 has dimension (3 x 1) and per column size 256 and padding 0
+ *  Eigen value r_ at offset 2304 has dimension (3 x 1) and per column size 256 and padding 0
+ *  Column colour_ at offset 3072 has size 64 and padding 0
+ *  Column value_ at offset 3136 has size 128 and padding 0
+ *  Column py_ at offset 3264 has size 256 and padding 0
+ *  Column count_ at offset 3520 has size 128 and padding 0
+ *  Column anotherCount_ at offset 3648 has size 128 and padding 0
+ *  Scalar description_ at offset 3776 has size 8 and padding 56
+ *  Scalar someNumber_ at offset 3840 has size 4 and padding 60
+ * Final offset = 3904 computeDataSize(...): 3904
  *
  */
 
